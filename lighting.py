@@ -141,9 +141,9 @@ def aggregate_region(region):
 
     # Calculate regional shares by indexing ontario shares to Statcan usage survey
     reg_shares = exs_techs.rename({'on_share_sf':'share_sf', 'on_share_mf':'share_mf'}, axis=1)
-    for code, shares in reg_shares.iterrows():
+    for code in reg_shares.index.values:
         statcan_cat = exs_techs.loc[code, 'statcan_category']
-        shares[['share_sf', 'share_mf']] *= usage_index.loc[statcan_cat]
+        reg_shares.loc[code, ['share_sf', 'share_mf']] *= usage_index.loc[statcan_cat]
     for col in reg_shares[['share_sf', 'share_mf']].columns: reg_shares[col] /= reg_shares[col].sum() # reset to sum 100%
 
     # Table 14: Total Households by Building Type and Energy Source
