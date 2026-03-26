@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CANOE Residential Sector Documentation</title>
+<style>
+:root {
+    --bg: #ffffff;
+    --fg: #1a1a2e;
+    --accent: #2e7d32; /* Changed accent color to green to differentiate from commercial */
+    --accent-light: #e8f5e9;
+    --border: #c8e6c9;
+    --code-bg: #f5f7f5;
+    --link: #1976d2;
+    --toc-bg: #fafdfa;
+    --sidebar-width: 280px;
+    --max-content: 920px;
+    --table-header-bg: #f1f8e9;
+    --table-stripe: #f9fbf9;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--fg);
+    background: var(--bg);
+}
+
+/* ---- Sidebar navigation ---- */
+#sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-width);
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--toc-bg);
+    border-right: 1px solid var(--border);
+    padding: 1.2rem 1rem;
+    z-index: 100;
+}
+
+#sidebar h2 {
+    margin: 0 0 0.8rem 0;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+}
+
+#sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+#sidebar li {
+    margin: 0.15rem 0;
+}
+
+#sidebar a {
+    display: block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    color: var(--fg);
+    text-decoration: none;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    transition: background 0.15s;
+}
+
+#sidebar a:hover, #sidebar a.active {
+    background: var(--accent-light);
+    color: var(--accent);
+}
+
+#sidebar .toc-section {
+    margin-top: 1.2rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--border);
+}
+
+#sidebar .toc-section-label {
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--accent);
+    margin-bottom: 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* ---- Main content ---- */
+#content {
+    margin-left: var(--sidebar-width);
+    max-width: var(--max-content);
+    padding: 2rem 2.5rem 4rem 2.5rem;
+}
+
+/* ---- Typography ---- */
+h1 {
+    font-size: 2rem;
+    margin: 2rem 0 0.6rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid var(--accent);
+    color: var(--accent);
+}
+
+h2 {
+    font-size: 1.5rem;
+    margin: 2.4rem 0 0.5rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--accent);
+}
+
+h3 {
+    font-size: 1.2rem;
+    margin: 1.8rem 0 0.4rem;
+    color: var(--accent);
+}
+
+h4 {
+    font-size: 1.05rem;
+    margin: 1.4rem 0 0.3rem;
+}
+
+p { margin: 0.6rem 0; }
+
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---- Code ---- */
+code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    padding: 0.15em 0.35em;
+    border-radius: 4px;
+}
+
+pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+
+pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+}
+
+/* ---- Tables ---- */
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+    font-size: 0.92rem;
+}
+
+th, td {
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    background: var(--table-header-bg);
+    font-weight: 600;
+}
+
+tr:nth-child(even) td { background: var(--table-stripe); }
+
+/* ---- Lists ---- */
+ul, ol { padding-left: 1.6rem; }
+li { margin: 0.25rem 0; }
+li > ul, li > ol { margin-top: 0.15rem; }
+
+/* ---- Blockquotes (used for notes) ---- */
+blockquote {
+    margin: 1rem 0;
+    padding: 0.8rem 1.2rem;
+    background: var(--accent-light);
+    border-left: 4px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+}
+
+blockquote p { margin: 0.2rem 0; }
+
+/* ---- Horizontal rule ---- */
+hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2rem 0;
+}
+
+/* ---- Section divider ---- */
+.section-divider {
+    margin: 3rem 0;
+    padding: 1.5rem 0 0;
+    border-top: 3px solid var(--accent);
+}
+
+.section-divider h1 {
+    border-bottom: none;
+    margin-top: 0;
+}
+
+/* ---- Print styles ---- */
+@media print {
+    #sidebar { display: none; }
+    #content { margin-left: 0; max-width: 100%; }
+    h1, h2, h3 { break-after: avoid; }
+    table { break-inside: avoid; }
+    pre { white-space: pre-wrap; word-wrap: break-word; }
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 900px) {
+    #sidebar { display: none; }
+    #content { margin-left: 0; padding: 1.5rem; }
+}
+</style>
+</head>
+<body>
+
+<nav id="sidebar">
+  <h2>CANOE Documentation</h2>
+  <div class="toc-section">
+    <div class="toc-section-label">Data Processing</div>
+    <ul>
+      <li><a href="#canoe-residential-sector-data-processing-documentation">CANOE Residential Sector &mdash; Data Processing</a></li>
+      <li><a href="#table-of-contents">Table of Contents</a></li>
+      <li><a href="#1-overview">1. Overview</a></li>
+      <li><a href="#2-pipeline-architecture">2. Pipeline Architecture</a></li>
+      <li><a href="#3-configuration-and-setup">3. Configuration and Setup</a></li>
+      <li><a href="#4-pre-processing">4. Pre-Processing</a></li>
+      <li><a href="#5-end-use-subsectors-existing-capacity-and-demand">5. Subsectors (Existing Stock)</a></li>
+      <li><a href="#6-new-capacity">6. New Capacity</a></li>
+      <li><a href="#7-hourly-demand-profiles-resstock">7. Hourly Demand Profiles</a></li>
+      <li><a href="#8-emissions">8. Emissions</a></li>
+      <li><a href="#9-post-processing">9. Post-Processing</a></li>
+      <li><a href="#10-known-assumptions-and-limitations">10. Assumptions &amp; Limitations</a></li>
+    </ul>
+  </div>
+  <div class="toc-section">
+    <div class="toc-section-label">Data Sources</div>
+    <ul>
+      <li><a href="#canoe-residential-sector-data-sources-catalog">CANOE Residential Sector &mdash; Data Sources</a></li>
+      <li><a href="#1-data-source-summary">1. Data Source Summary</a></li>
+      <li><a href="#2-nrcan-comprehensive-energy-use-database-ceud">2. NRCan CEUD</a></li>
+      <li><a href="#3-us-eia-annual-energy-outlook-aeo-residential-module">3. EIA AEO Residential</a></li>
+      <li><a href="#4-statistics-canada">4. Statistics Canada</a></li>
+      <li><a href="#5-nrel-resstock">5. NREL ResStock</a></li>
+      <li><a href="#6-us-epa-ghg-emission-factors-hub">6. US EPA GHG</a></li>
+      <li><a href="#7-renewables-ninja">7. Renewables Ninja</a></li>
+      <li><a href="#8-update-procedures-checklist">8. Update Procedures</a></li>
+    </ul>
+  </div>
+</nav>
+
+<main id="content">
+
+<h1 id="canoe-residential-sector-data-processing-documentation">CANOE Residential Sector &mdash; Data Processing Documentation</h1>
+<p><em>Comprehensive documentation of the data pipeline that converts upstream data sources into a Temoa-ready SQLite database for the Canadian Open Energy (CANOE) model's residential buildings sector.</em></p>
+<hr>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol>
+<li><a href="#1-overview">Overview</a></li>
+<li><a href="#2-pipeline-architecture">Pipeline Architecture</a></li>
+<li><a href="#3-configuration-and-setup">Configuration and Setup</a></li>
+<li><a href="#4-pre-processing">Pre-Processing</a></li>
+<li><a href="#5-end-use-subsectors-existing-capacity-and-demand">End-Use Subsectors (Existing Capacity and Demand)</a></li>
+<li><a href="#6-new-capacity">New Capacity</a></li>
+<li><a href="#7-hourly-demand-profiles-resstock">Hourly Demand Profiles (ResStock)</a></li>
+<li><a href="#8-emissions">Emissions</a></li>
+<li><a href="#9-post-processing">Post-Processing</a></li>
+<li><a href="#10-known-assumptions-and-limitations">Known Assumptions and Limitations</a></li>
+</ol>
+<hr>
+
+<h2 id="1-overview">1. Overview</h2>
+<h3 id="purpose">Purpose</h3>
+<p>The CANOE residential sector aggregation tool automatically constructs a Temoa-compatible SQLite database representing the Canadian residential buildings sector. It dynamically downloads and processes data from multiple sources&mdash;including Natural Resources Canada (NRCan), U.S. EIA Annual Energy Outlook (AEO), NREL ResStock, and Statistics Canada&mdash;to construct a detailed bottom-up representation of end-use demands, technology stocks, and investment options.</p>
+<h3 id="what-the-tool-produces">What the Tool Produces</h3>
+<ul>
+<li>A <strong>Temoa-schema SQLite database</strong> containing technology attributes, costs, capacities, energy demands, emissions, and hourly time-slice descriptions for the residential sector.</li>
+<li>Optionally, an <strong>Excel workbook</strong> replica of the database for easier manual inspection.</li>
+<li><strong>Diagnostic plots</strong> displaying demand specific distributions (DSDs) across the modeled hours.</li>
+</ul>
+<h3 id="scope">Scope</h3>
+<p>The model operates across:</p>
+<ul>
+<li><strong>Regions</strong>: Canadian provinces.</li>
+<li><strong>End-Uses</strong>: Space heating, space cooling, water heating, lighting, and appliances/other.</li>
+<li><strong>Technologies</strong>: A broad range of existing and future household technologies (furnaces, heat pumps, air conditioners, water heaters, various lighting types, and major appliances).</li>
+<li><strong>Time resolution</strong>: Hourly load profiles mapped to representative seasonal and diurnal periods.</li>
+<li><strong>Planning horizon</strong>: Configurable multi-year stepping (default: 5-year periods from 2025&ndash;2050).</li>
+</ul>
+<hr>
+
+<h2 id="2-pipeline-architecture">2. Pipeline Architecture</h2>
+<p>The processing logic follows a structured orchestration handled primarily by <code>residential_sector.py</code> and <code>all_subsectors.py</code>:</p>
+<div class="codehilite"><pre><span></span><code>1. setup.py             &rarr; Load configuration, fetch population projections and macroeconomic data, download AEO databases
+2. instantiate_database &rarr; Wipe/create the target SQLite database using the standard Temoa schema
+3. all_subsectors.py    &rarr; Orchestrator for sector-wide operations
+   a. pre_process()     &rarr; Define core temporal scales, geographical regions, physical commodities, and fundamental technologies
+   b. [Subsector Loop]  
+      i.   space_heating.py &rarr; Compute existing demand, efficiencies, and stock capacities
+      ii.  space_cooling.py &rarr; Compute existing demand...
+      iii. water_heating.py &rarr; Compute existing demand...
+      iv.  lighting.py      &rarr; Compute existing demand...
+      v.   appliances.py    &rarr; Compute existing demand...
+   c. aggregate_dsd()   &rarr; Construct normalized Demand Specific Distributions utilizing NREL ResStock
+   d. aggregate_emissions() &rarr; Map US EPA emission factors to physical combustion
+   e. post_process()    &rarr; Cross-check data consistency, write vintage chronologies, output bibliography references
+</code></pre></div>
+<hr>
+
+<h2 id="3-configuration-and-setup">3. Configuration and Setup</h2>
+<h3 id="31-configuration-file-paramsyaml">3.1 Configuration File (<code>params.yaml</code>)</h3>
+<p>Control parameters define the macro structure of the final database:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>period_step</code></td>
+<td style="text-align: left;">5</td>
+<td style="text-align: left;">Integer spacing between future projection years</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>model_periods</code></td>
+<td style="text-align: left;">[2025, ..., 2050]</td>
+<td style="text-align: left;">Planning sequence periods</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>base_year</code></td>
+<td style="text-align: left;">2022</td>
+<td style="text-align: left;">The historical calibration point for empirical data pulls (NRCan)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>weather_year</code></td>
+<td style="text-align: left;">2018</td>
+<td style="text-align: left;">The temporal anchor matching ResStock hourly profiles</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>furnace_fans</code></td>
+<td style="text-align: left;">Flag</td>
+<td style="text-align: left;">Specifies if electricity consumption for furnace fans is explicit</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>dsd_tolerance</code></td>
+<td style="text-align: left;">0.02</td>
+<td style="text-align: left;">Minimum threshold for clipping extremely small hourly demand fractions</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32-definition-maps-csvs">3.2 Definition Maps (CSVs)</h3>
+<ul>
+<li><strong><code>existing_technologies.csv</code> / <code>new_technologies.csv</code></strong>: Dictionary arrays tying model technology tags to AEO proxy strings and NRCan categorical fields.</li>
+<li><strong><code>fuel_commodities.csv</code> / <code>end_use_demands.csv</code></strong>: Outlines physical fuel constraints and output utility metrics (e.g., PJ space heating).</li>
+<li><strong><code>regions.csv</code> / <code>time.csv</code></strong>: Provincial alignment to US Census divisions (for proxying) and definitions for season/hour groupings.</li>
+</ul>
+<hr>
+
+<h2 id="4-pre-processing">4. Pre-Processing</h2>
+<p>Data structures strictly requisite for Temoa's operational matrices are generated:</p>
+<ul>
+<li><strong>Time definitions</strong>: Explicit rows mapping 8,760 hours to aggregated fractional time-delineations (<code>SeasonLabel</code>, <code>TimeSeason</code>, <code>TimeOfDay</code>, <code>TimeSegmentFraction</code>).</li>
+<li><strong>Technology Initialization</strong>: Cross-matches provided dictionaries to declare technology strings. It utilizes the AEO residential module (via Weibull distributions) to immediately instantiate dynamic equipment lifetimes.</li>
+</ul>
+<hr>
+
+<h2 id="5-end-use-subsectors-existing-capacity-and-demand">5. End-Use Subsectors (Existing Capacity and Demand)</h2>
+<p>The five primary Python modules (<code>space_heating.py</code>, <code>space_cooling.py</code>, <code>water_heating.py</code>, <code>lighting.py</code>, and <code>appliances.py</code>) execute slightly different methodologies dependent on available data:</p>
+<h3 id="51-base-demand-and-efficiency-nrcan">5.1 Base Demand and Efficiency (NRCan)</h3>
+<ul>
+<li><strong>Secondary Energy Consumption (SEC)</strong> is loaded from the <strong>NRCan Comprehensive Energy Use Database</strong>. (e.g. Table 8 for space heating).</li>
+<li><strong>Efficiencies</strong> corresponding to existing vintages are mapped from NRCan Table 26 (Heating System Efficiencies) etc., accommodating single or dual-fuel (where explicit) equipment.</li>
+<li><strong>Primary Demand Constraint</strong> is calculated directly as: <code>DEMAND = SEC * EFFICIENCY</code>.</li>
+</ul>
+<h3 id="52-future-demand-scaling-population">5.2 Future Demand Scaling (Population)</h3>
+<p>Unlike the commercial sector which references GDP, the residential sector inherently relies on demographic growth to project absolute energy boundaries forwards into model periods.</p>
+<ul>
+<li>The pipeline requests regional demographic data directly from <strong>Statistics Canada</strong> APIs (historical populations and "M1 medium-growth" projections).</li>
+</ul>
+<h3 id="53-existing-capacity-mapping">5.3 Existing Capacity Mapping</h3>
+<p>Base year hardware stock quantities are mapped from NRCan's database (e.g., Table 21 for Heating System Stock by building type). Rather than dumping this entire volume into the base year, CANOE functionally distributes these unit counts linearly backward across feasible historical vintages derived from the equipment lifetime.</p>
+<hr>
+
+<h2 id="6-new-capacity">6. New Capacity</h2>
+<p>Future capital investments depend rigidly upon techno-economic metrics from the <strong>U.S. EIA Annual Energy Outlook (AEO) Residential Module (<code>rsmess.xlsx</code>)</strong>.</p>
+<ul>
+<li>Canada is mapped regionally to comparable US Census Divisions.</li>
+<li>Parameter structures derived:
+<ul>
+<li><strong>CostInvest / CostFixed</strong>: Acquired from AEO base values, multiplied by configured currency exchange and inflation adjustment vectors, transforming them to $CAD(2020) per unit of capacity.</li>
+<li><strong>Efficiency</strong>: Straight proxy from expected generic baseline performance metrics within the AEO class.</li>
+<li><strong>Limits</strong>: Annual capacity factors are bounded using the peak-to-mean operational ratio inherently identified from the end-use specific hourly shape generation.</li>
+</ul></li>
+</ul>
+<hr>
+
+<h2 id="7-hourly-demand-profiles-resstock">7. Hourly Demand Profiles (ResStock)</h2>
+<p>A crucial aspect for system capacity adequacy is projecting exactly <em>when</em> the calculated annual end-use energy demand occurs throughout the year.</p>
+<ul>
+<li><strong>Data Source</strong>: Uses <strong>NREL ResStock</strong> modeled hourly energy outputs categorized across archetypal US building configurations (mobile homes, apartments, detached, etc).</li>
+<li><strong>Stock Alignment</strong>: The tool weights these US archetypical profiles to match the specific housing demographic (single vs multi-family ratios) existing in the target Canadian Province based on NRCan distribution surveys.</li>
+<li><strong>Weather Alignment</strong>: The pipeline normalizes the profile, applying temperature algorithms utilizing <strong>Renewables Ninja</strong> geo-proxied meteorological data (temperature and humidity matched to the standard <code>weather_year</code>) transferring the US profile's fundamental physics to the Canadian climate.</li>
+<li><strong>Result</strong>: An array representing the Demand Specific Distribution (<code>dsd</code>) fractions mapping annual PJ targets into actual seasonal/daily Temoa demands.</li>
+</ul>
+<hr>
+
+<h2 id="8-emissions">8. Emissions</h2>
+<p>If activated via <code>include_emissions</code> in <code>params.yaml</code>:</p>
+<ul>
+<li>Emission mechanisms load coefficients directly mimicking the <strong>US EPA GHG Emission Factors Hub</strong>.</li>
+<li>Ties specific input fuel flows directly to a dummy global-warming-potential commodity explicitly linking combustion energy to the resulting physical bounds (e.g., <code>EmissionLimit</code>).</li>
+</ul>
+<hr>
+
+<h2 id="9-post-processing">9. Post-Processing</h2>
+<ul>
+<li>Assures data continuity and database stability by sweeping for any orphaned technologies or absent <code>data_id</code> assignments which ensure rigid traceability across all inserted sqlite rows.</li>
+<li>Exports an internal tracker to compile <code>DataSource</code> mappings.</li>
+</ul>
+<hr>
+
+<h2 id="10-known-assumptions-and-limitations">10. Known Assumptions and Limitations</h2>
+<ol>
+<li><strong>Proxying Economics and Technologies</strong>: Like the commercial sector, the residential methodology extensively co-opts the EIA AEO frameworks assigning proxy USA-level geographic divisions to Canadian Provinces. Nuances between US manufacturing stock, Canadian regional subsidies, and specific cross-border technological adoptions are smoothed.</li>
+<li><strong>Growth Trajectory Staticism</strong>: Projections map linearly to population size without complex non-linear elasticity constraints based on shrinking floor spaces, densification adjustments, or changing consumer welfare.</li>
+<li><strong>ResStock Weather Generalization</strong>: Transferring localized US meteorological responses linearly against gross-level provincial weather metrics masks intense localized microclimates (especially inside massively varied topographies like BC or large geographic footprints like Ontario).</li>
+<li><strong>Lighting Load Assumptions</strong>: Default Annual Capacity factors for lighting lean on statically defined load estimates (e.g., rigid hourly usage values per bulb), failing to perfectly capture shifting diurnal lighting behaviors tied fundamentally to work-from-home shifts or smart-home penetration.</li>
+</ol>
+<div class="section-divider">
+  <h1 id="canoe-residential-sector-data-sources-catalog">CANOE Residential Sector &mdash; Data Sources Catalog</h1>
+</div>
+
+<h2 id="1-data-source-summary">1. Data Source Summary</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Data Type</th>
+<th style="text-align: left;">Primary Source</th>
+<th style="text-align: left;">Granularity</th>
+<th style="text-align: left;">Update Frequency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Existing Demand/Fuel</strong></td>
+<td style="text-align: left;">NRCan CEUD</td>
+<td style="text-align: left;">Regional / Annual</td>
+<td style="text-align: left;">Annual</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Future Demand Scaling</strong></td>
+<td style="text-align: left;">Statistics Canada</td>
+<td style="text-align: left;">Provincial / Annual</td>
+<td style="text-align: left;">Annual</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Tech Shares &amp; Costs</strong></td>
+<td style="text-align: left;">U.S. EIA AEO</td>
+<td style="text-align: left;">US Census Div.</td>
+<td style="text-align: left;">Annual</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Hourly Demand Shapes</strong></td>
+<td style="text-align: left;">NREL ResStock</td>
+<td style="text-align: left;">Archetype / Hourly</td>
+<td style="text-align: left;">Periodic upgrades</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Emissions Factors</strong></td>
+<td style="text-align: left;">US EPA GHG Hub</td>
+<td style="text-align: left;">Fuel Type</td>
+<td style="text-align: left;">Annual</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Weather Mapping</strong></td>
+<td style="text-align: left;">Renewables Ninja</td>
+<td style="text-align: left;">Geo-Coordinates</td>
+<td style="text-align: left;">None (static year)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-nrcan-comprehensive-energy-use-database-ceud">2. NRCan Comprehensive Energy Use Database (CEUD)</h2>
+<ul>
+<li><strong>Usage</strong>: Provides the anchor framework for historical base year demands and unit counts across heating, cooling, lighting, and appliances lines.</li>
+<li><strong>Update Procedure</strong>: Base year values (<code>base_year</code> in <code>params.yaml</code>) should be checked. If table structures shift within the NRCan provided Excel files, the bounds inside <code>utils.get_compr_db()</code> will require index modifications.</li>
+</ul>
+<h2 id="3-us-eia-annual-energy-outlook-aeo-residential-module">3. U.S. EIA Annual Energy Outlook (AEO) Residential Module</h2>
+<ul>
+<li><strong>Usage</strong>: Source proxy for techno-economics metrics, efficiency evolutions, new capital options, and degradation/lifetime metrics.</li>
+<li><strong>Update Procedure</strong>: A new <code>rsmess.xlsx</code> file must be manually pulled from the AEO NEMS archive repository into <code>input_files/</code>. It is critical to adjust <code>aeo_data_year</code>. Ensure <code>rsmess.xlsx</code> sheet matrices (<code>RSCLASS</code> and <code>RSMEQP</code>) haven't changed indexing structures when updated.</li>
+</ul>
+<h2 id="4-statistics-canada">4. Statistics Canada</h2>
+<ul>
+<li><strong>Usage</strong>: Pulls demographic historicals and M1 medium-growth projections to index gross energy consumption curves forward.</li>
+<li><strong>Update Procedure</strong>: Dynamically parsed using the StatCan API (typically Table 17-10-0057 for forward projection, 17-10-0009 for historical). The pipeline aggressively caches downloaded responses. During update cycles, empty the <code>data_cache/</code> directory to force a fresh data scrape.</li>
+</ul>
+<h2 id="5-nrel-resstock">5. NREL ResStock</h2>
+<ul>
+<li><strong>Usage</strong>: Maps generic hourly load shapes categorized by housing archetype explicitly linking physical temperature thresholds to thermal demands.</li>
+<li><strong>Update Procedure</strong>: Uses dynamic S3 path calls. The model utilizes Amy2018 base weather architectures mapped via <code>params.yaml</code>. Updates rely upon modifying the core <code>resstock:</code> configuration string paths if NREL reorganizes their OpenEI structure.</li>
+</ul>
+<h2 id="6-us-epa-ghg-emission-factors-hub">6. US EPA GHG Emission Factors Hub</h2>
+<ul>
+<li><strong>Usage</strong>: Generates default CO2 equivalent emission scaling factors.</li>
+<li><strong>Update Procedure</strong>: Change <code>epa_url</code> and <code>epa_year</code> in the configuration files to utilize explicit annual spreadsheet dumps provided by the US EPA.</li>
+</ul>
+<h2 id="7-renewables-ninja">7. Renewables Ninja</h2>
+<ul>
+<li><strong>Usage</strong>: Uses local API tokens to pull geo-specifically mapped temporal matrices to transfer ResStock profiles.</li>
+<li><strong>Update Procedure</strong>: Ensure the <code>rninja_api_token.txt</code> remains valid. Data does not generally demand updating unless <code>weather_year</code> is aggressively modified.</li>
+</ul>
+<h2 id="8-update-procedures-checklist">8. Update Procedures (Checklist)</h2>
+<p>As defined natively by <code>annual_update_checklist.txt</code>:</p>
+<ol>
+<li><strong>Latest AEO NEMS data</strong>: Download and replace <code>rsmess.xlsx</code> in <code>input_files</code>.</li>
+<li><strong>Setup.py indexing</strong>: If AEO altered their table outputs, update the row/col indexing arrays inside <code>setup.py</code>.</li>
+<li><strong>Review Config</strong>: Modify configuration data years and update relevant citation string variables in <code>params.yaml</code>.</li>
+<li><strong>Purge Cache</strong>: Delete all objects within the local <code>data_cache/</code> folder forcing the routine to retrieve fresh JSON/ZIP artifacts from exterior endpoints (StatCan, ResStock).</li>
+<li><strong>Execution Test</strong>: Generate the database validating the resulting tables against proper Temoa-SQLite structural definitions. Ensure no orphan data components appear.</li>
+</ol>
+</main>
+
+</body>
+</html>
