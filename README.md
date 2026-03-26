@@ -6,6 +6,8 @@ Aggregation can be configured through files in `input_files/` to include/exclude
 
 It will download a large number of files on the first run, but will cache these files locally and use the local cache in subsequent runs. Parameters can be set to force downloading to get latest data.
 
+Access comprehensive documentation [here](https://canoe-main.github.io/canoe-residential/)
+
 ## Usage
 
 ### 1. Create the conda environment
