@@ -52,7 +52,7 @@ def aggregate_region(region):
         # Input commodity
         in_comm = fuel_commodities.loc[row.loc['fuels']]
 
-        note = f"({water_heating['dem_unit']}/{in_comm['unit']}) base efficiency from class table"
+        note = f"({water_heating['dem_unit']}/{in_comm['unit']}) base efficiency fpr {row['aeo_class']}"
 
         # Taking efficiency from base efficiency of AEO class - not great but it'll do
         eff = aeo_res_class.loc[row['aeo_class'], 'Base Efficiency']
@@ -78,8 +78,7 @@ def aggregate_region(region):
     ##############################################################
     """
 
-    note = (f"Sum of {base_year} secondary energy multiplied by efficiency per technology (NRCan, {base_year}). "
-            f"Indexed to projected population (Statcan, {statcan_year})")
+
     ref = config.refs.get('nrcan_statcan')
 
     # Table 10: Water Heating Secondary Energy Use and GHG Emissions by Energy Source
@@ -96,11 +95,16 @@ def aggregate_region(region):
 
     # Write to database
     for period in config.model_periods:
+        yr = utils.data_year(period)
+        note = (
+            f"Sum of {base_year} secondary energy multiplied by efficiency per technology (NRCan, {base_year}). "
+            f"Indexed to projected populationin {yr} (Statcan, {statcan_year})"
+        )
         curs.execute(
             f"""REPLACE INTO
             Demand(region, period, commodity, demand, units,
             notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-            VALUES('{region}', {period}, '{water_heating['comm']}', {dem.loc[period].iloc[0]}, '({water_heating['dem_unit']})',
+            VALUES('{region}', {period}, '{water_heating['comm']}', {dem.loc[yr].iloc[0]}, '({water_heating['dem_unit']})',
             '{note}', '{ref.id}', 1, 1, 3, 1, 3, '{utils.data_id(region)}')"""
         )
 
@@ -113,10 +117,13 @@ def aggregate_region(region):
     """
 
     # Table 28: Water Heater Stock by Building Type and Energy Source
-    t28_stk = utils.get_compr_db(region, 28, 15, 20) / 1000 # Munit
+    t28_stk = utils.get_compr_db(region, 28, 15, 20) # kunit
 
     # Notes for database
-    note = f"{base_year} stock (NRCan, {base_year}) indexed to population (Statcan, {statcan_year}) and distributed evenly over feasible past vintages."
+    note = (
+        f"{base_year} stock (NRCan, {base_year}) carried forward to last existing vintage"
+         " and distributed evenly over feasible existing vintages."
+    )
     ref = config.refs.get('nrcan')
 
     # Get existing capacities from NRCan stock and distribute over past vintages
@@ -134,7 +141,7 @@ def aggregate_region(region):
             continue
         
         # Distribute existing capacities evenly over feasible vintages
-        vints, weights = utils.stock_vintages(base_year, config.lifetimes[row['aeo_class']])
+        vints, weights = utils.stock_vintages(config.lifetimes[row['aeo_class']])
         
         # Write existing capacities to database
         for v, vint in enumerate(vints):
@@ -156,7 +163,10 @@ def aggregate_region(region):
 
         ## Annual capacity factor for NRCan existing stock
         # (for new stock pulled in all sectors post processing)
-        max_note = (f"Annual utilisation of units. (annual secondary energy consumption * efficiency) / (c2a * existing stock) (NRCan, {base_year})")
+        max_note = (
+            "Annual utilisation of units. (annual secondary energy consumption * efficiency) "
+            f"/ (c2a * existing stock) (NRCan, {base_year})"
+        )
         min_note = "95% of MaxACF for slack. " + max_note
 
         act = activity[base_year].loc[nrcan_stock] # annual PJ output
@@ -165,21 +175,21 @@ def aggregate_region(region):
         # Annual capacity factor is actual annual activity divided by max possible annual activity from arbitrary c2a
         acf = act / (existing_cap * c2a)
 
-        for period in config.model_periods:
-            if max(vints) + config.lifetimes[row['aeo_class']] <= period: continue
-            
+        for vint in vints:
+            if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
+
             curs.execute(
                 f"""REPLACE INTO
-                LimitAnnualCapacityFactor(region, period, tech, output_comm, operator, factor,
+                LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
                 notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', {period}, '{tech}', '{water_heating['comm']}', 'ge', {acf*0.95},
+                VALUES('{region}', '{tech}', {vint}, '{water_heating['comm']}', 'ge', {acf*0.95},
                 '{min_note}', '{ref.id}', 1, 1, 2, 1, 3, '{utils.data_id(region)}')"""
             )
             curs.execute(
                 f"""REPLACE INTO
-                LimitAnnualCapacityFactor(region, period, tech, output_comm, operator, factor,
+                LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
                 notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', {period}, '{tech}', '{water_heating['comm']}', 'le', {acf},
+                VALUES('{region}', '{tech}', {vint}, '{water_heating['comm']}', 'le', {acf},
                 '{max_note}', '{ref.id}', 1, 1, 2, 1, 3, '{utils.data_id(region)}')"""
             )
 

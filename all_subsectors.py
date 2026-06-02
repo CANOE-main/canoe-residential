@@ -220,7 +220,7 @@ def pre_process():
         if pd.isna(aeo_class): continue # should only apply to appliances other
 
         # Add lifetimes and feasible vintages to config dictionaries
-        exs_vints, _weights = utils.stock_vintages(base_year, config.lifetimes[aeo_class])
+        exs_vints, _weights = utils.stock_vintages(config.lifetimes[aeo_class])
         config.tech_vints[tech] = exs_vints
 
 
@@ -271,7 +271,7 @@ def pre_aggregate_region(region):
         lifetime = config.lifetimes[aeo_class]
 
         ## LifetimeTech
-        note = '(y) Average of Weibull distribution.'
+        note = f'(y) Mean of Weibull distribution for {aeo_class}'
         ref = config.refs.get('aeo')
         curs.execute(
             f"""REPLACE INTO
@@ -291,9 +291,11 @@ def pre_aggregate_region(region):
 
         # All future periods are valid vintages
         for vint in config.tech_vints[tech]:
+
+            yr = utils.data_year(vint) # end-of-period data year for this vintage
             
             if type(df1) is pd.DataFrame:
-                df2 = df1.loc[(df1['First Year']<=vint) & (vint<=df1['Last Year'])]
+                df2 = df1.loc[(df1['First Year']<=yr) & (yr<=df1['Last Year'])]
                 cost_invest = df2.loc[df2['Replacement Cost'] != 0]['Replacement Cost'].iloc[0]
             elif type(df1) is pd.Series:
                 df2 = df1 # only one row remaining
@@ -312,7 +314,7 @@ def pre_aggregate_region(region):
                 CostInvest(region, tech, vintage, cost, units,
                 notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
                 VALUES('{region}', '{tech}', {vint}, {cost_invest}, '(M$/{cap_unit})',
-                '{note}', '{ref.id}', 1, 2, 2, 2, 3, '{utils.data_id(region)}')"""
+                '{yr} replacement cost for {aeo_equip}', '{ref.id}', 1, 2, 2, 2, 3, '{utils.data_id(region)}')"""
             )
             
 
@@ -330,7 +332,7 @@ def pre_aggregate_region(region):
                         CostFixed(region, period, tech, vintage, cost, units,
                         notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
                         VALUES('{region}', {period}, '{tech}', {vint}, {cost_fixed}, '(M$/{cap_unit}.y)',
-                        '{note}', '{ref_updated.id}', 1, 2, 2, 2, 3, '{utils.data_id(region)}')"""
+                        '{yr} Fixed O&M cost for {aeo_equip}', '{ref_updated.id}', 1, 2, 2, 2, 3, '{utils.data_id(region)}')"""
                     )
 
 
@@ -355,7 +357,7 @@ def pre_aggregate_region(region):
                     Efficiency(region, input_comm, tech, vintage, output_comm, efficiency,
                     notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
                     VALUES('{region}', '{in_comm}', '{tech}', {vint}, '{out_comm}', {eff},
-                    '(PJ/PJ) from {eff_metric}', '{ref.id}', 1, 2, 2, 2, 3, '{utils.data_id(region)}')"""
+                    '(PJ/PJ) from {eff_metric} for {aeo_class}', '{ref.id}', 1, 2, 2, 2, 3, '{utils.data_id(region)}')"""
                 )
     
 
@@ -591,19 +593,19 @@ def post_process_region(region):
                 continue
             else: acf = acf[0]
 
-            for period in config.model_periods:
+            for vintage in config.model_periods:
                 curs.execute(
                     f"""REPLACE INTO
-                    LimitAnnualCapacityFactor(region, period, tech, output_comm, operator, factor,
+                    LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
                     notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                    VALUES('{region}', {period}, '{tech}', '{out_comm}', 'ge', {acf*0.95},
+                    VALUES('{region}', '{tech}', {vintage}, '{out_comm}', 'ge', {acf*0.95},
                     '{note}', '{ref.id}', 1, 1, 3, 3, 3, '{utils.data_id(region)}')"""
                 )
                 curs.execute(
                     f"""REPLACE INTO
-                    LimitAnnualCapacityFactor(region, period, tech, output_comm, operator, factor,
+                    LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
                     notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                    VALUES('{region}', {period}, '{tech}', '{out_comm}', 'le', {acf},
+                    VALUES('{region}', '{tech}', {vintage}, '{out_comm}', 'le', {acf},
                     '{note}', '{ref.id}', 1, 1, 3, 3, 3, '{utils.data_id(region)}')"""
                 )
          

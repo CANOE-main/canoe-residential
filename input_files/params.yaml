@@ -9,16 +9,18 @@ model_periods:
   - 2035
   - 2040
   - 2045
-  - 2050
 
 weather_year: 2018 # For normalised timeseries data only
 base_year: 2022 # Default year to pull data from
 timezone: 'EST'
 
 data_id_prefix: 'RESHR'
-data_version: '001'
+data_version: '002'
 
 global_discount_rate: 0.05
+
+# Existing capacities below this are simply removed. Too small to matter.
+existing_cap_tolerance: 0.1
 
 # Currency, data costs are exchanged and inflated in post processing
 final_currency: 'CAD' # Not configured to output currencies other than CAD yet
@@ -51,7 +53,7 @@ nrcan_reference: 'Natural Resources Canada, (2025). Comprehensive Energy Use Dat
 handbook_reference: 'Natural Resources Canada, (2025). Energy Use Data Handbook Tables. https://oee.nrcan.gc.ca/corporate/statistics/neud/dpa/menus/trends/handbook/tables.cfm'
 
 aeo_reference: 'EIA. (2025, April 15). Download the National Energy Modeling System (NEMS). rsmess [dataset]. https://www.eia.gov/outlooks/aeo/info_nems_archive.php'
-aeo_updated_reference: "EIA. (2023). Updated Buildings Sector Appliance and Equipment Costs and Efficiency—Reference case [dataset]. https://www.eia.gov/analysis/studies/buildings/equipcosts/"
+aeo_updated_reference: "EIA. (2023). Updated Buildings Sector Appliance and Equipment Costs and Efficiency-Reference case [dataset]. https://www.eia.gov/analysis/studies/buildings/equipcosts/"
 aeo_data_year: 2025
 aeo_currency_year: 2022
 aeo_currency: 'USD'

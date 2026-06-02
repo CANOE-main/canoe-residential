@@ -86,6 +86,17 @@ def data_id(text: str = ''):
 
 
 
+def data_year(period_or_vintage: int) -> int:
+    """Returns the year to take data from for a given period/vintage"""
+    if period_or_vintage < config.model_periods[0]:
+        # Existing vintages use same-year data
+        return period_or_vintage
+    else:
+        # New vintages take period-end data
+        return period_or_vintage + config.params['period_step']
+
+
+
 def get_statcan_table(table, save_as=None, **kwargs):
 
     if save_as == None: save_as = f"statcan_{table}.csv"
@@ -276,7 +287,11 @@ def realign_timezone(df: pd.DataFrame, from_timezone:str=None, to_timezone:str=N
 
 
 
-def stock_vintages(stock_year, lifetime, vint_interval=config.params['period_step']) -> tuple[list, list]:
+def stock_vintages(
+        lifetime,
+        vint_interval=config.params['period_step'],
+        stock_year=config.model_periods[0],
+    ) -> tuple[list, list]:
 
     vint_last = stock_year - stock_year % vint_interval # first stepped back vint
 
@@ -284,7 +299,13 @@ def stock_vintages(stock_year, lifetime, vint_interval=config.params['period_ste
     vints = list(range(int(vint_last), int(stock_year-lifetime), -int(vint_interval)))
     vints.sort()
 
+    # Just in case stock year is exactly on a vintage, make sure to include it
     if stock_year not in vints: vints.append(stock_year)
+
+    # Has to be an existing vintage but we often use e.g. 2024 to represent end of 2025
+    # because Temoa traps us into start-of-period indexing
+    if vints[-1] >= config.model_periods[0]:
+        vints[-1] = config.model_periods[0] - 1
     
     # Only one vintage so all weight in there
     if len(vints) == 1: weights = [1]
