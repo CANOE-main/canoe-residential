@@ -8,3 +8,4 @@ input_files/rninja_api_token.txt
 output_plots/*
 
 uv.lock
+**.DS_Store
