@@ -9,6 +9,7 @@ import pandas as pd
 from scipy.special import gamma
 import sqlite3
 import os
+from canoe_schema.v3_2 import models as schema_models
 import canoe_residential.space_heating as space_heating
 import canoe_residential.space_cooling as space_cooling
 import canoe_residential.water_heating as water_heating
@@ -71,47 +72,45 @@ def pre_process():
     """
 
     for season in config.time['season'].unique():
-        curs.execute(
-            f"""REPLACE INTO
-            SeasonLabel(season)
-            VALUES('{season}')"""
-        )
+        sql, params = schema_models.SeasonLabel(season=season).to_replace_sql()
+        curs.execute(sql, params)
 
     for period in config.model_periods:
         for i, season in enumerate(config.time['season'].unique()):
-            curs.execute(
-                f"""REPLACE INTO
-                TimeSeason(period, sequence, season)
-                VALUES({period}, {i}, '{season}')"""
-            )
+            sql, params = schema_models.TimeSeason(
+                period=period,
+                sequence=i,
+                season=season,
+            ).to_replace_sql()
+            curs.execute(sql, params)
 
         for _h, row in config.time.iterrows():
-            curs.execute(
-                f"""REPLACE INTO
-                TimeSegmentFraction(period, season, tod, segfrac)
-                VALUES({period}, '{row['season']}', '{row['tod']}', {1/8760})"""
-            )
+            sql, params = schema_models.TimeSegmentFraction(
+                period=period,
+                season=row['season'],
+                tod=row['tod'],
+                segfrac=1 / 8760,
+            ).to_replace_sql()
+            curs.execute(sql, params)
 
     for i, tod in enumerate(config.time['tod'].unique()):
-        curs.execute(
-            f"""REPLACE INTO
-            TimeOfDay(sequence, tod)
-            VALUES({i}, '{tod}')"""
-        )
+        sql, params = schema_models.TimeOfDay(sequence=i, tod=tod).to_replace_sql()
+        curs.execute(sql, params)
         
     for i, period in enumerate([*config.model_periods, config.model_periods[-1] + config.params['period_step']]):
-        curs.execute(
-            f"""REPLACE INTO
-            TimePeriod(sequence, period, flag)
-            VALUES({i}, {period}, 'f')"""
-        )
+        sql, params = schema_models.TimePeriod(
+            sequence=i,
+            period=period,
+            flag='f',
+        ).to_replace_sql()
+        curs.execute(sql, params)
 
     for region, row in config.regions[config.regions['include']].iterrows():
-        curs.execute(
-            f"""REPLACE INTO
-            Region(region, notes)
-            VALUES('{region}', '{row['description']}')"""
-        )
+        sql, params = schema_models.Region(
+            region=region,
+            notes=row['description'],
+        ).to_replace_sql()
+        curs.execute(sql, params)
 
 
     """
@@ -121,25 +120,31 @@ def pre_process():
     """
 
     for _fuel, row in fuel_commodities.iterrows():
-        curs.execute(
-            f"""REPLACE INTO
-            Commodity(name, flag, description, data_id)
-            VALUES('{row['comm']}', '{row['flag']}', '(PJ) {row['description']}', '{utils.data_id()}')"""
-        )
+        sql, params = schema_models.Commodity(
+            name=row['comm'],
+            flag=row['flag'],
+            description=f"(PJ) {row['description']}",
+            data_id=utils.data_id(),
+        ).to_replace_sql()
+        curs.execute(sql, params)
     for _end_use, row in end_use_demands.iterrows():
-        curs.execute(
-            f"""REPLACE INTO
-            Commodity(name, flag, description, data_id)
-            VALUES('{row['comm']}', 'd', '(PJ) {row['description']}', '{utils.data_id()}')"""
-        )
+        sql, params = schema_models.Commodity(
+            name=row['comm'],
+            flag='d',
+            description=f"(PJ) {row['description']}",
+            data_id=utils.data_id(),
+        ).to_replace_sql()
+        curs.execute(sql, params)
     
     if config.params['include_emissions']:
         # CO2-equivalent emission commodity
-        curs.execute(
-            f"""REPLACE INTO
-            Commodity(name, flag, description, data_id)
-            VALUES('{config.params['emission_commodity']}', 'e', '(ktCO2eq) CO2-equivalent emissions', '{utils.data_id()}')"""
-        )
+        sql, params = schema_models.Commodity(
+            name=config.params['emission_commodity'],
+            flag='e',
+            description='(ktCO2eq) CO2-equivalent emissions',
+            data_id=utils.data_id(),
+        ).to_replace_sql()
+        curs.execute(sql, params)
 
 
 
@@ -177,18 +182,17 @@ def pre_process():
         if not row['include_new']: continue
         
         tech_desc = f"{row.loc['end_uses']} - {row.loc['description']}"
-        curs.execute(
-            f"""REPLACE INTO
-            Technology(tech, flag, sector, description, data_id)
-            VALUES('{tech}', 'p', 'residential', '{tech_desc}', '{utils.data_id()}')"""
-        )
-
+        tech_kwargs = {
+            'tech': tech,
+            'flag': 'p',
+            'sector': 'residential',
+            'description': tech_desc,
+            'data_id': utils.data_id(),
+        }
         for flag in row['flags'].split(','):
-            curs.execute(
-                f"""UPDATE Technology
-                SET {flag} == 1
-                WHERE tech == '{tech}'"""
-            )
+            tech_kwargs[flag.strip()] = 1
+        sql, params = schema_models.Technology(**tech_kwargs).to_replace_sql()
+        curs.execute(sql, params)
 
         # Add future vintages to vintage dictionary
         config.tech_vints[tech] = config.model_periods
@@ -202,18 +206,17 @@ def pre_process():
 
         tech_desc = f"{row.loc['end_use']} - {row.loc['description']}"
 
-        curs.execute(
-            f"""REPLACE INTO
-            Technology(tech, flag, sector, description, data_id)
-            VALUES('{tech}', 'p', 'residential', '{tech_desc}', '{utils.data_id()}')"""
-        )
-
+        tech_kwargs = {
+            'tech': tech,
+            'flag': 'p',
+            'sector': 'residential',
+            'description': tech_desc,
+            'data_id': utils.data_id(),
+        }
         for flag in row['flags'].split(','):
-            curs.execute(
-                f"""UPDATE Technology
-                SET {flag} == 1
-                WHERE tech == '{tech}'"""
-            )
+            tech_kwargs[flag.strip()] = 1
+        sql, params = schema_models.Technology(**tech_kwargs).to_replace_sql()
+        curs.execute(sql, params)
 
         # Get equivalent future tech
         aeo_class = row.loc['aeo_class']
@@ -273,13 +276,20 @@ def pre_aggregate_region(region):
         ## LifetimeTech
         note = f'(y) Mean of Weibull distribution for {aeo_class}'
         ref = config.refs.get('aeo')
-        curs.execute(
-            f"""REPLACE INTO
-            LifetimeTech(region, tech, lifetime,
-            notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-            VALUES('{region}', '{tech}', {lifetime},
-            '{note}', '{ref.id}', 1, 2, 2, 2, 3, '{utils.data_id(region)}')"""
-        )
+        sql, params = schema_models.LifetimeTech(
+            region=region,
+            tech=tech,
+            lifetime=lifetime,
+            notes=note,
+            data_source=ref.id,
+            dq_cred=1,
+            dq_geog=2,
+            dq_struc=2,
+            dq_tech=2,
+            dq_time=3,
+            data_id=utils.data_id(region),
+        ).to_replace_sql()
+        curs.execute(sql, params)
 
         if type(df0) is pd.DataFrame: df1 = df0.loc[aeo_equip]
         elif type(df0) is pd.Series: df1 = df0 # only one row remaining
@@ -309,13 +319,22 @@ def pre_aggregate_region(region):
             cost_invest *= config.params['conversion_factors']['cost']['invest']
             cost_invest = conv_curr(cost_invest)
 
-            curs.execute(
-                f"""REPLACE INTO
-                CostInvest(region, tech, vintage, cost, units,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{tech}', {vint}, {cost_invest}, '(M$/{cap_unit})',
-                '{yr} replacement cost for {aeo_equip}', '{ref.id}', 1, 2, 2, 2, 3, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.CostInvest(
+                region=region,
+                tech=tech,
+                vintage=vint,
+                cost=cost_invest,
+                units=f"(M$/{cap_unit})",
+                notes=f"{yr} replacement cost for {aeo_equip}",
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=2,
+                dq_struc=2,
+                dq_tech=2,
+                dq_time=3,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
             
 
             ## CostFixed
@@ -327,13 +346,23 @@ def pre_aggregate_region(region):
 
                     if period < vint or vint + lifetime <= period: continue
 
-                    curs.execute(
-                        f"""REPLACE INTO
-                        CostFixed(region, period, tech, vintage, cost, units,
-                        notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                        VALUES('{region}', {period}, '{tech}', {vint}, {cost_fixed}, '(M$/{cap_unit}.y)',
-                        '{yr} Fixed O&M cost for {aeo_equip}', '{ref_updated.id}', 1, 2, 2, 2, 3, '{utils.data_id(region)}')"""
-                    )
+                    sql, params = schema_models.CostFixed(
+                        region=region,
+                        period=period,
+                        tech=tech,
+                        vintage=vint,
+                        cost=cost_fixed,
+                        units=f"(M$/{cap_unit}.y)",
+                        notes=f"{yr} Fixed O&M cost for {aeo_equip}",
+                        data_source=ref_updated.id,
+                        dq_cred=1,
+                        dq_geog=2,
+                        dq_struc=2,
+                        dq_tech=2,
+                        dq_time=3,
+                        data_id=utils.data_id(region),
+                    ).to_replace_sql()
+                    curs.execute(sql, params)
 
 
             # For each end use the technology supplies (heat pumps do heating and cooling)
@@ -352,13 +381,23 @@ def pre_aggregate_region(region):
                 if eff_metric in config.params['conversion_factors']['efficiency'].keys(): eff *= config.params['conversion_factors']['efficiency'][eff_metric]
 
                 ## Default Efficiency
-                curs.execute(
-                    f"""REPLACE INTO
-                    Efficiency(region, input_comm, tech, vintage, output_comm, efficiency,
-                    notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                    VALUES('{region}', '{in_comm}', '{tech}', {vint}, '{out_comm}', {eff},
-                    '(PJ/PJ) from {eff_metric} for {aeo_class}', '{ref.id}', 1, 2, 2, 2, 3, '{utils.data_id(region)}')"""
-                )
+                sql, params = schema_models.Efficiency(
+                    region=region,
+                    input_comm=in_comm,
+                    tech=tech,
+                    vintage=vint,
+                    output_comm=out_comm,
+                    efficiency=eff,
+                    notes=f"(PJ/PJ) from {eff_metric} for {aeo_class}",
+                    data_source=ref.id,
+                    dq_cred=1,
+                    dq_geog=2,
+                    dq_struc=2,
+                    dq_tech=2,
+                    dq_time=3,
+                    data_id=utils.data_id(region),
+                ).to_replace_sql()
+                curs.execute(sql, params)
     
 
     ##############################################################
@@ -379,13 +418,20 @@ def pre_aggregate_region(region):
         # Doing this by region so that some regions can be skipped at aggregation phase
         lifetime = config.lifetimes[aeo_class]
 
-        curs.execute(
-            f"""REPLACE INTO
-            LifetimeTech(region, tech, lifetime,
-            notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-            VALUES('{region}', '{tech}', {lifetime},
-            '{note}', '{ref.id}', 1, 2, 2, 3, 3, '{utils.data_id(region)}')"""
-        )
+        sql, params = schema_models.LifetimeTech(
+            region=region,
+            tech=tech,
+            lifetime=lifetime,
+            notes=note,
+            data_source=ref.id,
+            dq_cred=1,
+            dq_geog=2,
+            dq_struc=2,
+            dq_tech=3,
+            dq_time=3,
+            data_id=utils.data_id(region),
+        ).to_replace_sql()
+        curs.execute(sql, params)
         
 
         ## CostFixed
@@ -398,13 +444,23 @@ def pre_aggregate_region(region):
                 
                 if period < vint or vint + lifetime <= period: continue
 
-                curs.execute(
-                    f"""REPLACE INTO
-                    CostFixed(region, period, tech, vintage, cost, units,
-                    notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                    VALUES('{region}', {period}, '{tech}', {vint}, {cost_fixed}, '(M$/{cap_unit}.y)',
-                    '{note}', '{ref_updated.id}', 1, 2, 2, 3, 3, '{utils.data_id(region)}')"""
-                )
+                sql, params = schema_models.CostFixed(
+                    region=region,
+                    period=period,
+                    tech=tech,
+                    vintage=vint,
+                    cost=cost_fixed,
+                    units=f"(M$/{cap_unit}.y)",
+                    notes=note,
+                    data_source=ref_updated.id,
+                    dq_cred=1,
+                    dq_geog=2,
+                    dq_struc=2,
+                    dq_tech=3,
+                    dq_time=3,
+                    data_id=utils.data_id(region),
+                ).to_replace_sql()
+                curs.execute(sql, params)
     
     """
     ##############################################################
@@ -426,11 +482,14 @@ def pre_aggregate_region(region):
         if pd.isna(c2a): continue
 
         unit = f"{end_use_demands.loc[end_use, 'dem_unit']}/{end_use_demands.loc[end_use, 'cap_unit']}.y" # ACT/CAP.y
-        curs.execute(
-            f"""REPLACE INTO
-            CapacityToActivity(region, tech, c2a, notes, data_id)
-            VALUES('{region}', '{tech}', {c2a}, '({unit}) {note}', '{utils.data_id(region)}')"""
-        )
+        sql, params = schema_models.CapacityToActivity(
+            region=region,
+            tech=tech,
+            c2a=c2a,
+            notes=f"({unit}) {note}",
+            data_id=utils.data_id(region),
+        ).to_replace_sql()
+        curs.execute(sql, params)
 
     ## AEO future stock
     for tech, row in aeo_techs.iterrows():
@@ -441,11 +500,14 @@ def pre_aggregate_region(region):
 
         c2a = end_use_demands.loc[end_uses[0], 'c2a'] # Must be the same for all end uses anyway
         unit = f"{end_use_demands.loc[end_uses[0], 'dem_unit']}/{end_use_demands.loc[end_uses[0], 'cap_unit']}.y" # ACT/CAP.y
-        curs.execute(
-            f"""REPLACE INTO
-            CapacityToActivity(region, tech, c2a, notes, data_id)
-            VALUES('{region}', '{tech}', {c2a}, '({unit}) {note}', '{utils.data_id(region)}')"""
-        )
+        sql, params = schema_models.CapacityToActivity(
+            region=region,
+            tech=tech,
+            c2a=c2a,
+            notes=f"({unit}) {note}",
+            data_id=utils.data_id(region),
+        ).to_replace_sql()
+        curs.execute(sql, params)
     
 
     conn.commit()
@@ -473,11 +535,11 @@ def post_process():
     vints = set([fetch[0] for fetch in curs.execute(f"SELECT vintage FROM Efficiency").fetchall() if fetch[0] not in config.model_periods])
 
     for vint in vints:
-        curs.execute(
-            f"""INSERT OR IGNORE INTO
-            TimePeriod(period, flag)
-            VALUES({vint}, 'e')"""
-        )
+        sql, params = schema_models.TimePeriod(
+            period=vint,
+            flag='e',
+        ).to_insert_or_ignore_sql()
+        curs.execute(sql, params)
 
 
     """
@@ -488,11 +550,12 @@ def post_process():
 
     # Add all references in the bibliography to the references tables
     for reference in config.refs:
-        curs.execute(
-            f"""REPLACE INTO
-            DataSource(source_id, source, data_id)
-            VALUES('{reference.id}', '{reference.citation}', "{utils.data_id()}")"""
-        )
+        sql, params = schema_models.DataSource(
+            source_id=reference.id,
+            source=reference.citation,
+            data_id=utils.data_id(),
+        ).to_replace_sql()
+        curs.execute(sql, params)
         
 
     """
@@ -502,11 +565,8 @@ def post_process():
     """
 
     for id in sorted(config.data_ids):
-        curs.execute(
-            f"""REPLACE INTO
-            DataSet(data_id)
-            VALUES('{id}')"""
-        )
+        sql, params = schema_models.DataSet(data_id=id).to_replace_sql()
+        curs.execute(sql, params)
 
     # Check for missing data IDs
     print("Checking that all data has a dataset ID...", end="")
@@ -594,20 +654,40 @@ def post_process_region(region):
             else: acf = acf[0]
 
             for vintage in config.model_periods:
-                curs.execute(
-                    f"""REPLACE INTO
-                    LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
-                    notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                    VALUES('{region}', '{tech}', {vintage}, '{out_comm}', 'ge', {acf*0.95},
-                    '{note}', '{ref.id}', 1, 1, 3, 3, 3, '{utils.data_id(region)}')"""
-                )
-                curs.execute(
-                    f"""REPLACE INTO
-                    LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
-                    notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                    VALUES('{region}', '{tech}', {vintage}, '{out_comm}', 'le', {acf},
-                    '{note}', '{ref.id}', 1, 1, 3, 3, 3, '{utils.data_id(region)}')"""
-                )
+                sql, params = schema_models.LimitAnnualCapacityFactor(
+                    region=region,
+                    tech=tech,
+                    vintage=vintage,
+                    output_comm=out_comm,
+                    operator='ge',
+                    factor=acf * 0.95,
+                    notes=note,
+                    data_source=ref.id,
+                    dq_cred=1,
+                    dq_geog=1,
+                    dq_struc=3,
+                    dq_tech=3,
+                    dq_time=3,
+                    data_id=utils.data_id(region),
+                ).to_replace_sql()
+                curs.execute(sql, params)
+                sql, params = schema_models.LimitAnnualCapacityFactor(
+                    region=region,
+                    tech=tech,
+                    vintage=vintage,
+                    output_comm=out_comm,
+                    operator='le',
+                    factor=acf,
+                    notes=note,
+                    data_source=ref.id,
+                    dq_cred=1,
+                    dq_geog=1,
+                    dq_struc=3,
+                    dq_tech=3,
+                    dq_time=3,
+                    data_id=utils.data_id(region),
+                ).to_replace_sql()
+                curs.execute(sql, params)
          
 
 
@@ -714,7 +794,7 @@ def aggregate_dsd():
             axs[row, col].set_title(end_use)
             p+=1
 
-            data = []
+            rows = []
             for period in config.model_periods:
                 for h, time in config.time.iterrows():
 
@@ -722,27 +802,42 @@ def aggregate_dsd():
                     tod = time['tod']
 
                     if tod == config.time['tod'].iloc[0]:
-                        data.append([
-                            region, period, seas, tod, demand_comm, dsd[h],
-                            note, ref.id,
-                            1, 3, 2, 1, 3,
-                            data_id,
-                        ])
+                        rows.append(schema_models.DemandSpecificDistribution(
+                            region=region,
+                            period=period,
+                            season=seas,
+                            tod=tod,
+                            demand_name=demand_comm,
+                            dsd=dsd[h],
+                            notes=note,
+                            data_source=ref.id,
+                            dq_cred=1,
+                            dq_geog=3,
+                            dq_struc=2,
+                            dq_tech=1,
+                            dq_time=3,
+                            data_id=data_id,
+                        ))
                     else:
-                        data.append([
-                            region, period, seas, tod, demand_comm, dsd[h],
-                            None, None,
-                            None, None, None, None, None,
-                            data_id,
-                        ])
+                        rows.append(schema_models.DemandSpecificDistribution(
+                            region=region,
+                            period=period,
+                            season=seas,
+                            tod=tod,
+                            demand_name=demand_comm,
+                            dsd=dsd[h],
+                            notes=None,
+                            data_source=None,
+                            dq_cred=None,
+                            dq_geog=None,
+                            dq_struc=None,
+                            dq_tech=None,
+                            dq_time=None,
+                            data_id=data_id,
+                        ))
 
-            curs.executemany(
-                "REPLACE INTO "
-                "DemandSpecificDistribution(region, period, season, tod, demand_name, dsd, "
-                "notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                data
-            )
+            sql, params = schema_models.DemandSpecificDistribution.bulk_replace_into_sql(rows, include_nulls=True)
+            curs.executemany(sql, params)
 
         pp.tight_layout()
 
@@ -796,13 +891,25 @@ def aggregate_emissions():
             # Note assumed fuel
             note = f"Emissions factor using {epa_fuel} (EPA, {config.params['epa_year']}) divided by efficiency as emissions are per output unit energy."
 
-            curs.execute(
-                f"""REPLACE INTO
-                EmissionActivity(region, emis_comm, input_comm, tech, vintage, output_comm, activity, units,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{row[0]}', '{emis_comm}', '{row[1]}', '{row[2]}', {row[3]}, '{row[4]}', {emis_act}, '{emis_units}',
-                '{note}', '{ref.id}', 1, 3, 2, 4, 1, '{utils.data_id(row[0])}')"""
-            )
+            sql, params = schema_models.EmissionActivity(
+                region=row[0],
+                emis_comm=emis_comm,
+                input_comm=row[1],
+                tech=row[2],
+                vintage=row[3],
+                output_comm=row[4],
+                activity=emis_act,
+                units=emis_units,
+                notes=note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=3,
+                dq_struc=2,
+                dq_tech=4,
+                dq_time=1,
+                data_id=utils.data_id(row[0]),
+            ).to_replace_sql()
+            curs.execute(sql, params)
     
 
     conn.commit()
@@ -840,18 +947,17 @@ def aggregate_imports():
         
         description = f"import dummy for {out_comm['description']}"
 
-        curs.execute(
-            f"""REPLACE INTO
-            Technology(tech, flag, sector, description, data_id)
-            VALUES('{tech}', 'p', 'residential', '{description}', '{utils.data_id()}')"""
-        )
-
+        tech_kwargs = {
+            'tech': tech,
+            'flag': 'p',
+            'sector': 'residential',
+            'description': description,
+            'data_id': utils.data_id(),
+        }
         for flag in row['flags'].split(','):
-            curs.execute(
-                f"""UPDATE Technology
-                SET {flag} == 1
-                WHERE tech == '{tech}'"""
-            )
+            tech_kwargs[flag.strip()] = 1
+        sql, params = schema_models.Technology(**tech_kwargs).to_replace_sql()
+        curs.execute(sql, params)
         
         for region in config.model_regions:
 
@@ -861,19 +967,27 @@ def aggregate_imports():
             # (or it will be orphaned and removed by network checks)
             life = df_life.loc[(region, out_comm['comm'])]
 
-            curs.execute(
-                f"""REPLACE INTO
-                Efficiency(region, input_comm, tech, vintage, output_comm, efficiency, notes, data_id)
-                VALUES('{region}', '{config.fuel_commodities.loc[row['in_comm'], 'comm']}', '{tech}',
-                '{config.model_periods[0]}', '{out_comm['comm']}', 1, '{description})', '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.Efficiency(
+                region=region,
+                input_comm=config.fuel_commodities.loc[row['in_comm'], 'comm'],
+                tech=tech,
+                vintage=config.model_periods[0],
+                output_comm=out_comm['comm'],
+                efficiency=1,
+                notes=description,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
             
             if life < config.model_periods[-1] - config.model_periods[0]:
-                curs.execute(
-                    f"""REPLACE INTO
-                    LifetimeTech(region, tech, lifetime, notes, data_id)
-                    VALUES("{region}", "{tech}", "{life}", "(y) retires when no longer used", "{utils.data_id(region)}")"""
-                )
+                sql, params = schema_models.LifetimeTech(
+                    region=region,
+                    tech=tech,
+                    lifetime=life,
+                    notes='(y) retires when no longer used',
+                    data_id=utils.data_id(region),
+                ).to_replace_sql()
+                curs.execute(sql, params)
             
     conn.commit()
     conn.close()

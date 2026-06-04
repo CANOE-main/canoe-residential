@@ -6,6 +6,7 @@ Written by Ian David Elder for the CANOE model
 import canoe_residential.utils as utils
 import os
 import sqlite3
+from canoe_schema.v3_2 import models as schema_models
 from canoe_residential.setup import config
 
 # Shortens lines a bit
@@ -62,13 +63,23 @@ def aggregate_region(region):
         for vint in config.tech_vints[tech]:
             if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
 
-            curs.execute(
-                f"""REPLACE INTO
-                Efficiency(region, input_comm, tech, vintage, output_comm, efficiency,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{in_comm['comm']}', '{tech}', {vint}, '{water_heating['comm']}', {eff},
-                '{note}', '{ref.id}', 1, 2, 3, 1, 3, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.Efficiency(
+                region=region,
+                input_comm=in_comm['comm'],
+                tech=tech,
+                vintage=vint,
+                output_comm=water_heating['comm'],
+                efficiency=eff,
+                notes=note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=2,
+                dq_struc=3,
+                dq_tech=1,
+                dq_time=3,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
             
 
 
@@ -100,13 +111,22 @@ def aggregate_region(region):
             f"Sum of {base_year} secondary energy multiplied by efficiency per technology (NRCan, {base_year}). "
             f"Indexed to projected populationin {yr} (Statcan, {statcan_year})"
         )
-        curs.execute(
-            f"""REPLACE INTO
-            Demand(region, period, commodity, demand, units,
-            notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-            VALUES('{region}', {period}, '{water_heating['comm']}', {dem.loc[yr].iloc[0]}, '({water_heating['dem_unit']})',
-            '{note}', '{ref.id}', 1, 1, 3, 1, 3, '{utils.data_id(region)}')"""
-        )
+        sql, params = schema_models.Demand(
+            region=region,
+            period=period,
+            commodity=water_heating['comm'],
+            demand=dem.loc[yr].iloc[0],
+            units=f"({water_heating['dem_unit']})",
+            notes=note,
+            data_source=ref.id,
+            dq_cred=1,
+            dq_geog=1,
+            dq_struc=3,
+            dq_tech=1,
+            dq_time=3,
+            data_id=utils.data_id(region),
+        ).to_replace_sql()
+        curs.execute(sql, params)
 
     
 
@@ -152,13 +172,22 @@ def aggregate_region(region):
 
             exs_cap = existing_cap * weight
 
-            curs.execute(
-                f"""REPLACE INTO
-                ExistingCapacity(region, tech, vintage, capacity, units,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{tech}', {vint}, {exs_cap}, '({water_heating['cap_unit']})',
-                '{note}', '{ref.id}', 1, 1, 2, 1, 1, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.ExistingCapacity(
+                region=region,
+                tech=tech,
+                vintage=vint,
+                capacity=exs_cap,
+                units=f"({water_heating['cap_unit']})",
+                notes=note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=1,
+                dq_struc=2,
+                dq_tech=1,
+                dq_time=1,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
         
 
         ## Annual capacity factor for NRCan existing stock
@@ -178,20 +207,40 @@ def aggregate_region(region):
         for vint in vints:
             if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
 
-            curs.execute(
-                f"""REPLACE INTO
-                LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{tech}', {vint}, '{water_heating['comm']}', 'ge', {acf*0.95},
-                '{min_note}', '{ref.id}', 1, 1, 2, 1, 3, '{utils.data_id(region)}')"""
-            )
-            curs.execute(
-                f"""REPLACE INTO
-                LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{tech}', {vint}, '{water_heating['comm']}', 'le', {acf},
-                '{max_note}', '{ref.id}', 1, 1, 2, 1, 3, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.LimitAnnualCapacityFactor(
+                region=region,
+                tech=tech,
+                vintage=vint,
+                output_comm=water_heating['comm'],
+                operator='ge',
+                factor=acf * 0.95,
+                notes=min_note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=1,
+                dq_struc=2,
+                dq_tech=1,
+                dq_time=3,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
+            sql, params = schema_models.LimitAnnualCapacityFactor(
+                region=region,
+                tech=tech,
+                vintage=vint,
+                output_comm=water_heating['comm'],
+                operator='le',
+                factor=acf,
+                notes=max_note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=1,
+                dq_struc=2,
+                dq_tech=1,
+                dq_time=3,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
 
 
     conn.commit()
