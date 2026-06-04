@@ -3,13 +3,13 @@ Aggregates data for residential lighting
 Written by Ian David Elder for the CANOE model
 """
 
-import utils
+import canoe_residential.utils as utils
 import pandas as pd
 import os
 import numpy as np
 import sqlite3
-from currency_conversion import conv_curr
-from setup import config
+from canoe_residential.currency_conversion import conv_curr
+from canoe_residential.setup import config
 
 # Shortens lines a bit
 base_year = config.params['base_year']

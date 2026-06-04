@@ -1,11 +1,11 @@
 import pandas as pd
 import numpy as np
-import utils
+import canoe_residential.utils as utils
 import os
 import requests
 from io import StringIO
 from datetime import datetime
-from setup import config
+from canoe_residential.setup import config
 
 weather_maps = dict() # Maps that have already been loaded weather_maps[region] = 8760x8760 np array
 

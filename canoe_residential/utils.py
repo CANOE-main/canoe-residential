@@ -13,7 +13,7 @@ import requests
 import xmltodict
 import pytz
 import datetime
-from setup import config
+from canoe_residential.setup import config
 import urllib.request
 import zipfile
 import pickle

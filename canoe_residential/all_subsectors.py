@@ -3,20 +3,20 @@ Aggregates residential non-subsector-specific data
 Written by Ian David Elder for the CANOE model
 """
 
-from setup import config
-import utils
+from canoe_residential.setup import config
+import canoe_residential.utils as utils
 import pandas as pd
 from scipy.special import gamma
 import sqlite3
 import os
-import space_heating
-import space_cooling
-import water_heating
-import lighting
-import appliances
+import canoe_residential.space_heating as space_heating
+import canoe_residential.space_cooling as space_cooling
+import canoe_residential.water_heating as water_heating
+import canoe_residential.lighting as lighting
+import canoe_residential.appliances as appliances
 from matplotlib import pyplot as pp
-import weather_mapping
-from currency_conversion import conv_curr
+import canoe_residential.weather_mapping as weather_mapping
+from canoe_residential.currency_conversion import conv_curr
 
 # Shortens lines a bit
 nrcan_techs = config.existing_techs

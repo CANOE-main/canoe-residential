@@ -3,10 +3,10 @@ Aggregates data for residential water heating
 Written by Ian David Elder for the CANOE model
 """
 
-import utils
+import canoe_residential.utils as utils
 import os
 import sqlite3
-from setup import config
+from canoe_residential.setup import config
 
 # Shortens lines a bit
 base_year = config.params['base_year']

@@ -4,13 +4,13 @@ Written by Ian David Elder for the CANOE model
 """
 
 import os
-import all_subsectors
-import utils
+import canoe_residential.all_subsectors as all_subsectors
+import canoe_residential.utils as utils
 import re
-import model_reduction
-import setup
+import canoe_residential.model_reduction as model_reduction
+import canoe_residential.setup as setup
 import sqlite3
-from setup import config
+from canoe_residential.setup import config
 from matplotlib import pyplot as pp
 
 
