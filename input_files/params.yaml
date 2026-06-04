@@ -31,7 +31,8 @@ inflation_index: 'gdp_deflator' # gdp_deflator, general_cpi, energy_and_petroleu
 # For computational reasons
 dsd_tolerance: 0.02
 
-sqlite_schema: "input_files/canoe_dataset_schema.sql"
+# sqlite_schema: "input_files/canoe_dataset_schema.sql"
+canoe_schema: "3.2"
 sqlite_database: "residential.sqlite"
 excel_template: "input_files/Template spreadsheet (make a copy).xlsx"
 excel_output: "residential.xlsx"
