@@ -3,11 +3,12 @@ Aggregates data for appliances
 Written by Ian David Elder for the CANOE model
 """
 
-import utils
+import canoe_residential.utils as utils
 import pandas as pd
 import os
 import sqlite3
-from setup import config
+from canoe_schema.v3_2 import models as schema_models
+from canoe_residential.setup import config
 
 # Shortens lines a bit
 base_year = config.params['base_year']
@@ -56,17 +57,29 @@ def aggregate_region(region):
             if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
 
             # Lower limit
-            curs.execute(
-                f"""REPLACE INTO
-                LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor, notes, data_id)
-                VALUES('{region}', '{tech}', {vint}, '{out_comm}', 'ge', {acf*0.95}, '{min_note}', '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.LimitAnnualCapacityFactor(
+                region=region,
+                tech=tech,
+                vintage=vint,
+                output_comm=out_comm,
+                operator='ge',
+                factor=acf * 0.95,
+                notes=min_note,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
             # Upper limit
-            curs.execute(
-                f"""REPLACE INTO
-                LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor, notes, data_id)
-                VALUES('{region}', '{tech}', {vint}, '{out_comm}', 'le', {acf}, '{max_note}', '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.LimitAnnualCapacityFactor(
+                region=region,
+                tech=tech,
+                vintage=vint,
+                output_comm=out_comm,
+                operator='le',
+                factor=acf,
+                notes=max_note,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
 
 
 
@@ -118,13 +131,22 @@ def aggregate_region(region):
 
             exs_cap = existing_cap * weight
 
-            curs.execute(
-                f"""REPLACE INTO
-                ExistingCapacity(region, tech, vintage, capacity, units,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{tech}', {vint}, {exs_cap}, '({config.end_use_demands.loc[row['end_use'], 'cap_unit']})',
-                '{note}', '{ref.id}', 1, 1, 1, 1, 3, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.ExistingCapacity(
+                region=region,
+                tech=tech,
+                vintage=vint,
+                capacity=exs_cap,
+                units=f"({config.end_use_demands.loc[row['end_use'], 'cap_unit']})",
+                notes=note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=1,
+                dq_struc=1,
+                dq_tech=1,
+                dq_time=3,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
         
 
 
@@ -146,13 +168,17 @@ def aggregate_region(region):
                 f"sufficient to meet peak demand. Indexed to population projection (Statcan) at {yr}."
             )
 
-            curs.execute(
-                f"""REPLACE INTO
-                Demand(region, period, commodity, demand, units,
-                notes, data_source, data_id)
-                VALUES('{region}', {period}, '{config.end_use_demands.loc[end_use, 'comm']}', {dem}, '({config.end_use_demands.loc[end_use, 'dem_unit']})',
-                '{note}', '{ref.id}', '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.Demand(
+                region=region,
+                period=period,
+                commodity=config.end_use_demands.loc[end_use, 'comm'],
+                demand=dem,
+                units=f"({config.end_use_demands.loc[end_use, 'dem_unit']})",
+                notes=note,
+                data_source=ref.id,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
         
 
 
@@ -187,13 +213,23 @@ def aggregate_region(region):
             if row['end_use'] != 'appliances other': # appliances other has no lifetime
                 if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
 
-            curs.execute(
-                f"""REPLACE INTO
-                Efficiency(region, input_comm, tech, vintage, output_comm, efficiency, 
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{fuel_commodities.loc['electricity', 'comm']}', '{tech}', {vint}, '{end_use_demands.loc[row['end_use'], 'comm']}', {eff_exs},
-                '{note}', '{ref.id}', 1, 1, 1, 1, 3, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.Efficiency(
+                region=region,
+                input_comm=fuel_commodities.loc['electricity', 'comm'],
+                tech=tech,
+                vintage=vint,
+                output_comm=end_use_demands.loc[row['end_use'], 'comm'],
+                efficiency=eff_exs,
+                notes=note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=1,
+                dq_struc=1,
+                dq_tech=1,
+                dq_time=3,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
 
 
     ## Cooking ranges and clothes dryers
@@ -237,13 +273,23 @@ def aggregate_region(region):
             for vint in vints:
                 if vint + config.lifetimes[exs_techs.loc[techs[f],'aeo_class']] <= config.model_periods[0]: continue
                 
-                curs.execute(
-                    f"""REPLACE INTO
-                    Efficiency(region, input_comm, tech, vintage, output_comm, efficiency,
-                    notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                    VALUES('{region}', '{fuel['comm']}', '{techs[f]}', {vint}, '{config.end_use_demands.loc[row['end_use'], 'comm']}', {eff_exs},
-                    '{note}', '{ref.id}', 1, 3, 1, 3, 3, '{utils.data_id(region)}')"""
-                )
+                sql, params = schema_models.Efficiency(
+                    region=region,
+                    input_comm=fuel['comm'],
+                    tech=techs[f],
+                    vintage=vint,
+                    output_comm=config.end_use_demands.loc[row['end_use'], 'comm'],
+                    efficiency=eff_exs,
+                    notes=note,
+                    data_source=ref.id,
+                    dq_cred=1,
+                    dq_geog=3,
+                    dq_struc=1,
+                    dq_tech=3,
+                    dq_time=3,
+                    data_id=utils.data_id(region),
+                ).to_replace_sql()
+                curs.execute(sql, params)
             
 
 
@@ -288,13 +334,23 @@ def aggregate_region(region):
             )
 
             # Write to table
-            curs.execute(
-                f"""REPLACE INTO
-                Efficiency(region, input_comm, tech, vintage, output_comm, efficiency,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{fuel_commodities.loc[row['fuel'], 'comm']}', '{tech}', {vint}, '{end_use_demands.loc[row['end_uses'], 'comm']}', {eff},
-                '{note}', '{ref.id}', 1, 3, 1, 3, 3, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.Efficiency(
+                region=region,
+                input_comm=fuel_commodities.loc[row['fuel'], 'comm'],
+                tech=tech,
+                vintage=vint,
+                output_comm=end_use_demands.loc[row['end_uses'], 'comm'],
+                efficiency=eff,
+                notes=note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=3,
+                dq_struc=1,
+                dq_tech=3,
+                dq_time=3,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
 
     conn.commit()
     conn.close()

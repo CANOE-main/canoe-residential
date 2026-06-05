@@ -2,6 +2,6 @@
 For calling from command line
 """
 
-import residential_sector
+import canoe_residential.residential_sector as residential_sector
 
 residential_sector.build_database()

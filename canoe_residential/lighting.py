@@ -3,13 +3,14 @@ Aggregates data for residential lighting
 Written by Ian David Elder for the CANOE model
 """
 
-import utils
+import canoe_residential.utils as utils
 import pandas as pd
 import os
 import numpy as np
 import sqlite3
-from currency_conversion import conv_curr
-from setup import config
+from canoe_schema.v3_2 import models as schema_models
+from canoe_residential.currency_conversion import conv_curr
+from canoe_residential.setup import config
 
 # Shortens lines a bit
 base_year = config.params['base_year']
@@ -103,20 +104,40 @@ def aggregate_region(region):
         
         for vintage in config.model_periods:
 
-            curs.execute(
-                f"""REPLACE INTO
-                LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{row['tech']}', {vintage}, '{lighting['comm']}', 'ge', {acf*0.95},
-                '{min_note}', '{ref.id}', 1, 3, 3, 1, 4, '{utils.data_id(region)}')"""
-            )
-            curs.execute(
-                f"""REPLACE INTO
-                LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{row['tech']}', {vintage}, '{lighting['comm']}', 'le', {acf},
-                '{acf_note}', '{ref.id}', 1, 3, 3, 1, 4, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.LimitAnnualCapacityFactor(
+                region=region,
+                tech=row['tech'],
+                vintage=vintage,
+                output_comm=lighting['comm'],
+                operator='ge',
+                factor=acf * 0.95,
+                notes=min_note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=3,
+                dq_struc=3,
+                dq_tech=1,
+                dq_time=4,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
+            sql, params = schema_models.LimitAnnualCapacityFactor(
+                region=region,
+                tech=row['tech'],
+                vintage=vintage,
+                output_comm=lighting['comm'],
+                operator='le',
+                factor=acf,
+                notes=acf_note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=3,
+                dq_struc=3,
+                dq_tech=1,
+                dq_time=4,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
 
 
 
@@ -185,13 +206,22 @@ def aggregate_region(region):
             "(efficiency) of existing lighting stock. "
             f"Indexed to population projection (Statcan) at {yr}"
         )
-        curs.execute(
-            f"""REPLACE INTO
-            Demand(region, period, commodity, demand, units,
-            notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-            VALUES('{region}', {period}, '{lighting['comm']}', {dem.loc[yr].iloc[0]}, '({lighting['dem_unit']})',
-            '{note}', '{ref.id}', 1, 3, 4, 2, 4, '{utils.data_id(region)}')"""
-        )
+        sql, params = schema_models.Demand(
+            region=region,
+            period=period,
+            commodity=lighting['comm'],
+            demand=dem.loc[yr].iloc[0],
+            units=f"({lighting['dem_unit']})",
+            notes=note,
+            data_source=ref.id,
+            dq_cred=1,
+            dq_geog=3,
+            dq_struc=4,
+            dq_tech=2,
+            dq_time=4,
+            data_id=utils.data_id(region),
+        ).to_replace_sql()
+        curs.execute(sql, params)
         
 
 
@@ -220,24 +250,38 @@ def aggregate_region(region):
         aeo_note = f"Assumed same as {aeo_techs.loc[code, 'tech']}."
         
         tech_desc = f"lighting - {exs.loc['description']}"
-        curs.execute(
-            f"""REPLACE INTO
-            Technology(tech, flag, sector, annual, description, data_id)
-            VALUES('{exs['tech']}', 'p', 'residential', 1, '{tech_desc}', '{utils.data_id()}')"""
-        )
+        sql, params = schema_models.Technology(
+            tech=exs['tech'],
+            flag='p',
+            sector='residential',
+            annual=1,
+            description=tech_desc,
+            data_id=utils.data_id(),
+        ).to_replace_sql()
+        curs.execute(sql, params)
         unit = f"{lighting['dem_unit']}/{lighting['cap_unit']}.y" # ACT/CAP.y
-        curs.execute(
-            f"""REPLACE INTO
-            CapacityToActivity(region, tech, c2a, notes, data_id)
-            VALUES('{region}', '{exs['tech']}', 1, '({unit})', '{utils.data_id(region)}')"""
-        )
-        curs.execute(
-            f"""REPLACE INTO
-            LifetimeTech(region, tech, lifetime,
-            notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-            VALUES('{region}', '{exs['tech']}', {lifetime},
-            '(y) {aeo_note}', '{ref.id}', 1, 3, 2, 2, 3, '{utils.data_id(region)}')"""
-        )
+        sql, params = schema_models.CapacityToActivity(
+            region=region,
+            tech=exs['tech'],
+            c2a=1,
+            notes=f"({unit})",
+            data_id=utils.data_id(region),
+        ).to_replace_sql()
+        curs.execute(sql, params)
+        sql, params = schema_models.LifetimeTech(
+            region=region,
+            tech=exs['tech'],
+            lifetime=lifetime,
+            notes=f"(y) {aeo_note}",
+            data_source=ref.id,
+            dq_cred=1,
+            dq_geog=3,
+            dq_struc=2,
+            dq_tech=2,
+            dq_time=3,
+            data_id=utils.data_id(region),
+        ).to_replace_sql()
+        curs.execute(sql, params)
 
         # Some lighting techs didn't come around that long ago so restrict the oldest vintage
         if not pd.isna(exs['oldest_vint']): vints = [vint for vint in vints if vint >= exs['oldest_vint']]
@@ -262,48 +306,97 @@ def aggregate_region(region):
                 f"{config.params['lighting']['usage_ref']}; "
                 f"{config.params['aeo_reference']}"
             )
-            curs.execute(
-                f"""REPLACE INTO
-                ExistingCapacity(region, tech, vintage, capacity, units,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{exs['tech']}', {vint}, {exs_cap}, '({lighting['cap_unit']})',
-                '{note}', '{ref.id}', 1, 2, 3, 3, 4, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.ExistingCapacity(
+                region=region,
+                tech=exs['tech'],
+                vintage=vint,
+                capacity=exs_cap,
+                units=f"({lighting['cap_unit']})",
+                notes=note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=2,
+                dq_struc=3,
+                dq_tech=3,
+                dq_time=4,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
             
             ref = config.refs.get('aeo')
-            curs.execute(
-                f"""REPLACE INTO
-                Efficiency(region, input_comm, tech, vintage, output_comm, efficiency,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{in_comm['comm']}', '{exs['tech']}', {vint}, '{lighting['comm']}', {exs['efficacy']},
-                '({lighting['dem_unit']}/{in_comm['unit']}) {aeo_note}', '{ref.id}', 1, 2, 3, 3, 4, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.Efficiency(
+                region=region,
+                input_comm=in_comm['comm'],
+                tech=exs['tech'],
+                vintage=vint,
+                output_comm=lighting['comm'],
+                efficiency=exs['efficacy'],
+                notes=f"({lighting['dem_unit']}/{in_comm['unit']}) {aeo_note}",
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=2,
+                dq_struc=3,
+                dq_tech=3,
+                dq_time=4,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
 
-            curs.execute(
-                f"""REPLACE INTO
-                LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{exs['tech']}', {vint}, '{lighting['comm']}', 'ge', {acf*0.95},
-                '{min_note}', '{ref.id}', 1, 3, 2, 2, 4, '{utils.data_id(region)}')"""
-            )
-            curs.execute(
-                f"""REPLACE INTO
-                LimitAnnualCapacityFactor(region, tech, vintage, output_comm, operator, factor,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{exs['tech']}', {vint}, '{lighting['comm']}', 'le', {acf},
-                '{acf_note}', '{ref.id}', 1, 3, 2, 2, 4, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.LimitAnnualCapacityFactor(
+                region=region,
+                tech=exs['tech'],
+                vintage=vint,
+                output_comm=lighting['comm'],
+                operator='ge',
+                factor=acf * 0.95,
+                notes=min_note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=3,
+                dq_struc=2,
+                dq_tech=2,
+                dq_time=4,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
+            sql, params = schema_models.LimitAnnualCapacityFactor(
+                region=region,
+                tech=exs['tech'],
+                vintage=vint,
+                output_comm=lighting['comm'],
+                operator='le',
+                factor=acf,
+                notes=acf_note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=3,
+                dq_struc=2,
+                dq_tech=2,
+                dq_time=4,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
             
             for period in config.model_periods:
                 if vint > period or vint + lifetime <= period: continue
 
-                curs.execute(
-                    f"""REPLACE INTO
-                    CostFixed(region, period, tech, vintage, cost, units,
-                    notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                    VALUES('{region}', {period}, '{exs['tech']}', {vint}, {exs['cost_maintain']}, '(M$/{lighting['cap_unit']}.y)',
-                    '{aeo_note}', '{ref.id}', 1, 2, 3, 3, 4, '{utils.data_id(region)}')"""
-                )
+                sql, params = schema_models.CostFixed(
+                    region=region,
+                    period=period,
+                    tech=exs['tech'],
+                    vintage=vint,
+                    cost=exs['cost_maintain'],
+                    units=f"(M$/{lighting['cap_unit']}.y)",
+                    notes=aeo_note,
+                    data_source=ref.id,
+                    dq_cred=1,
+                    dq_geog=2,
+                    dq_struc=3,
+                    dq_tech=3,
+                    dq_time=4,
+                    data_id=utils.data_id(region),
+                ).to_replace_sql()
+                curs.execute(sql, params)
     
 
 
@@ -318,11 +411,15 @@ def aggregate_region(region):
         if not aeo['include_new']: continue
 
         tech_desc = f"lighting - {aeo['description']}"
-        curs.execute(
-            f"""REPLACE INTO
-            Technology(tech, flag, sector, annual, description, data_id)
-            VALUES('{aeo['tech']}', 'p', 'residential', 1, '{tech_desc}', '{utils.data_id()}')"""
-        )
+        sql, params = schema_models.Technology(
+            tech=aeo['tech'],
+            flag='p',
+            sector='residential',
+            annual=1,
+            description=tech_desc,
+            data_id=utils.data_id(),
+        ).to_replace_sql()
+        curs.execute(sql, params)
 
         # Vintages for new stock are model periods
         for vint in config.model_periods:
@@ -336,34 +433,61 @@ def aggregate_region(region):
             # Using lifetime process because some bulb lives might improve over model periods in aeo data
             note = f"(y) AEO {yr} lamp life in hours divided by annual capacity factor (DOE, 2012)."
             ref = config.refs.get('aeo')
-            curs.execute(
-                f"""REPLACE INTO
-                LifetimeProcess(region, tech, vintage, lifetime,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{aeo['tech']}', {vint}, {lifetime},
-                '{note}', '{ref.id}', 1, 3, 3, 1, 2, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.LifetimeProcess(
+                region=region,
+                tech=aeo['tech'],
+                vintage=vint,
+                lifetime=lifetime,
+                notes=note,
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=3,
+                dq_struc=3,
+                dq_tech=1,
+                dq_time=2,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
             
             ## Efficiency
             eff = conv['efficacy'] * get_aeo_value(code, 'efficacy', yr)
-            curs.execute(
-                f"""REPLACE INTO
-                Efficiency(region, input_comm, tech, vintage, output_comm, efficiency,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{in_comm['comm']}', '{aeo['tech']}', {vint}, '{lighting['comm']}', {eff},
-                '({lighting['dem_unit']}/{in_comm['unit']}) from AEO for {yr}', '{ref.id}', 1, 3, 3, 1, 2, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.Efficiency(
+                region=region,
+                input_comm=in_comm['comm'],
+                tech=aeo['tech'],
+                vintage=vint,
+                output_comm=lighting['comm'],
+                efficiency=eff,
+                notes=f"({lighting['dem_unit']}/{in_comm['unit']}) from AEO for {yr}",
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=3,
+                dq_struc=3,
+                dq_tech=1,
+                dq_time=2,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
             
             ## CostInvest
             cost_invest = conv['cost'] * get_aeo_value(code, 'cost_install', yr)
             cost_invest = conv_curr(cost_invest)
-            curs.execute(
-                f"""REPLACE INTO
-                CostInvest(region, tech, vintage, cost, units,
-                notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                VALUES('{region}', '{aeo['tech']}', {vint}, {cost_invest}, '(M$/{lighting['cap_unit']})',
-                'from AEO for {yr}', '{ref.id}', 1, 3, 3, 1, 2, '{utils.data_id(region)}')"""
-            )
+            sql, params = schema_models.CostInvest(
+                region=region,
+                tech=aeo['tech'],
+                vintage=vint,
+                cost=cost_invest,
+                units=f"(M$/{lighting['cap_unit']})",
+                notes=f"from AEO for {yr}",
+                data_source=ref.id,
+                dq_cred=1,
+                dq_geog=3,
+                dq_struc=3,
+                dq_tech=1,
+                dq_time=2,
+                data_id=utils.data_id(region),
+            ).to_replace_sql()
+            curs.execute(sql, params)
             
             for period in config.model_periods:
                 
@@ -373,13 +497,23 @@ def aggregate_region(region):
                 ## CostFixed
                 cost_fixed = conv['cost'] * get_aeo_value(code, 'cost_maintain', yr)
                 cost_fixed = conv_curr(cost_fixed)
-                curs.execute(
-                    f"""REPLACE INTO
-                    CostFixed(region, period, tech, vintage, cost, units,
-                    notes, data_source, dq_cred, dq_geog, dq_struc, dq_tech, dq_time, data_id)
-                    VALUES('{region}', {period}, '{aeo['tech']}', {vint}, {cost_fixed}, '(M$/{lighting['cap_unit']}.y)',
-                    'from AEO for {yr}', '{ref.id}', 1, 3, 3, 1, 2, '{utils.data_id(region)}')"""
-                )
+                sql, params = schema_models.CostFixed(
+                    region=region,
+                    period=period,
+                    tech=aeo['tech'],
+                    vintage=vint,
+                    cost=cost_fixed,
+                    units=f"(M$/{lighting['cap_unit']}.y)",
+                    notes=f"from AEO for {yr}",
+                    data_source=ref.id,
+                    dq_cred=1,
+                    dq_geog=3,
+                    dq_struc=3,
+                    dq_tech=1,
+                    dq_time=2,
+                    data_id=utils.data_id(region),
+                ).to_replace_sql()
+                curs.execute(sql, params)
 
 
 

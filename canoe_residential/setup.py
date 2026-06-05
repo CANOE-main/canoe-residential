@@ -10,7 +10,7 @@ import requests
 import urllib.request
 import zipfile
 import sqlite3
-
+from canoe_schema.sql import get_sql_schema
 
 
 def instantiate_database():
@@ -23,11 +23,13 @@ def instantiate_database():
     curs = conn.cursor() # Cursor object interacts with the sqlite db
 
     # Build the database if it doesn't exist. Otherwise clear all data if forced
-    if build_db: curs.executescript(open(config.schema_file, 'r').read())
+    sql_schema = get_sql_schema(config.canoe_schema) 
+    if build_db:
+        curs.executescript(sql_schema)
     elif config.params['force_wipe_database']:
         tables = [t[0] for t in curs.execute("""SELECT name FROM sqlite_master WHERE type='table';""").fetchall()]
         for table in tables: curs.execute(f"DELETE FROM '{table}'")
-        curs.executescript(open(config.schema_file, 'r').read())
+        curs.executescript(sql_schema)
         print("Database wiped prior to aggregation. See params.\n")
 
     conn.commit()
@@ -90,7 +92,7 @@ class bibliography:
 class config:
 
     # File locations
-    _this_dir = os.path.realpath(os.path.dirname(__file__)) + "/"
+    _this_dir = "./"
     input_files = _this_dir + 'input_files/'
     cache_dir = _this_dir + "data_cache/"
 
@@ -147,7 +149,7 @@ class config:
 
     def _get_files(cls):
 
-        config.schema_file = config.params['sqlite_schema']
+        config.canoe_schema = config.params['canoe_schema']
         config.database_file = config.params['sqlite_database']
         config.excel_template_file = config.params['excel_template']
         config.excel_target_file = config.params['excel_output']
