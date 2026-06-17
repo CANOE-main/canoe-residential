@@ -8,7 +8,7 @@ import canoe_residential.nrcan as nrcan
 import pandas as pd
 import os
 import sqlite3
-from canoe_schema.v3_2 import models as schema_models
+from canoe_schema.v4_0 import models as schema_models
 from canoe_residential.setup import config
 
 # Shortens lines a bit
@@ -60,26 +60,26 @@ def aggregate_region(region):
             # Lower limit
             sql, params = schema_models.LimitAnnualCapacityFactor(
                 region=region,
-                tech=tech,
+                tech_or_group=tech,
                 vintage=vint,
                 output_comm=out_comm,
                 operator='ge',
                 factor=acf * 0.95,
                 notes=min_note,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             # Upper limit
             sql, params = schema_models.LimitAnnualCapacityFactor(
                 region=region,
-                tech=tech,
+                tech_or_group=tech,
                 vintage=vint,
                 output_comm=out_comm,
                 operator='le',
                 factor=acf,
                 notes=max_note,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
 
 
@@ -146,7 +146,7 @@ def aggregate_region(region):
                 dq_tech=1,
                 dq_time=3,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
         
 
@@ -178,7 +178,7 @@ def aggregate_region(region):
                 notes=note,
                 data_source=ref.id,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
         
 
@@ -229,7 +229,7 @@ def aggregate_region(region):
                 dq_tech=1,
                 dq_time=3,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
 
 
@@ -289,7 +289,7 @@ def aggregate_region(region):
                     dq_tech=3,
                     dq_time=3,
                     data_id=utils.data_id(region),
-                ).to_replace_sql()
+                ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
             
 
@@ -315,7 +315,7 @@ def aggregate_region(region):
         # Get baseline efficiency from existing stock
         nrcan_tech = exs_techs.loc[exs_techs['end_use'] + " - " + exs_techs['description'] == row['nrcan_equiv']].index.values[0]
         base_eff = aeo_res_class.loc[row['aeo_class'], 'Base Efficiency']
-        eff_exs = curs.execute(f"SELECT efficiency FROM Efficiency WHERE region == '{region}' and tech == '{nrcan_tech}'").fetchone()[0]
+        eff_exs = curs.execute(f"SELECT efficiency FROM {schema_models.Efficiency.__table_name__} WHERE region == '{region}' and tech == '{nrcan_tech}'").fetchone()[0]
 
         vints = config.tech_vints[tech]
         for vint in vints:
@@ -350,7 +350,7 @@ def aggregate_region(region):
                 dq_tech=3,
                 dq_time=3,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
 
     conn.commit()

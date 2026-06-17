@@ -10,7 +10,7 @@ import pandas as pd
 import os
 import numpy as np
 import sqlite3
-from canoe_schema.v3_2 import models as schema_models
+from canoe_schema.v4_0 import models as schema_models
 from canoe_residential.currency_conversion import conv_curr
 from canoe_residential.setup import config
 
@@ -108,7 +108,7 @@ def aggregate_region(region):
 
             sql, params = schema_models.LimitAnnualCapacityFactor(
                 region=region,
-                tech=row['tech'],
+                tech_or_group=row['tech'],
                 vintage=vintage,
                 output_comm=lighting['comm'],
                 operator='ge',
@@ -121,11 +121,11 @@ def aggregate_region(region):
                 dq_tech=1,
                 dq_time=4,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             sql, params = schema_models.LimitAnnualCapacityFactor(
                 region=region,
-                tech=row['tech'],
+                tech_or_group=row['tech'],
                 vintage=vintage,
                 output_comm=lighting['comm'],
                 operator='le',
@@ -138,7 +138,7 @@ def aggregate_region(region):
                 dq_tech=1,
                 dq_time=4,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
 
 
@@ -222,7 +222,7 @@ def aggregate_region(region):
             dq_tech=2,
             dq_time=4,
             data_id=utils.data_id(region),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
         
 
@@ -259,7 +259,7 @@ def aggregate_region(region):
             annual=1,
             description=tech_desc,
             data_id=utils.data_id(),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
         unit = f"{lighting['dem_unit']}/{lighting['cap_unit']}.y" # ACT/CAP.y
         sql, params = schema_models.CapacityToActivity(
@@ -268,7 +268,7 @@ def aggregate_region(region):
             c2a=1,
             notes=f"({unit})",
             data_id=utils.data_id(region),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
         sql, params = schema_models.LifetimeTech(
             region=region,
@@ -282,7 +282,7 @@ def aggregate_region(region):
             dq_tech=2,
             dq_time=3,
             data_id=utils.data_id(region),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
         # Some lighting techs didn't come around that long ago so restrict the oldest vintage
@@ -322,7 +322,7 @@ def aggregate_region(region):
                 dq_tech=3,
                 dq_time=4,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             
             ref = config.refs.get('aeo')
@@ -341,12 +341,12 @@ def aggregate_region(region):
                 dq_tech=3,
                 dq_time=4,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
 
             sql, params = schema_models.LimitAnnualCapacityFactor(
                 region=region,
-                tech=exs['tech'],
+                tech_or_group=exs['tech'],
                 vintage=vint,
                 output_comm=lighting['comm'],
                 operator='ge',
@@ -359,11 +359,11 @@ def aggregate_region(region):
                 dq_tech=2,
                 dq_time=4,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             sql, params = schema_models.LimitAnnualCapacityFactor(
                 region=region,
-                tech=exs['tech'],
+                tech_or_group=exs['tech'],
                 vintage=vint,
                 output_comm=lighting['comm'],
                 operator='le',
@@ -376,7 +376,7 @@ def aggregate_region(region):
                 dq_tech=2,
                 dq_time=4,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             
             for period in config.model_periods:
@@ -397,7 +397,7 @@ def aggregate_region(region):
                     dq_tech=3,
                     dq_time=4,
                     data_id=utils.data_id(region),
-                ).to_replace_sql()
+                ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
     
 
@@ -420,7 +420,7 @@ def aggregate_region(region):
             annual=1,
             description=tech_desc,
             data_id=utils.data_id(),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
         # Vintages for new stock are model periods
@@ -448,7 +448,7 @@ def aggregate_region(region):
                 dq_tech=1,
                 dq_time=2,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             
             ## Efficiency
@@ -468,7 +468,7 @@ def aggregate_region(region):
                 dq_tech=1,
                 dq_time=2,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             
             ## CostInvest
@@ -488,7 +488,7 @@ def aggregate_region(region):
                 dq_tech=1,
                 dq_time=2,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             
             for period in config.model_periods:
@@ -514,7 +514,7 @@ def aggregate_region(region):
                     dq_tech=1,
                     dq_time=2,
                     data_id=utils.data_id(region),
-                ).to_replace_sql()
+                ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
 
 

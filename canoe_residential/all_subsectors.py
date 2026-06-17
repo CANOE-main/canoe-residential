@@ -10,7 +10,7 @@ import pandas as pd
 from scipy.special import gamma
 import sqlite3
 import os
-from canoe_schema.v3_2 import models as schema_models
+from canoe_schema.v4_0 import models as schema_models
 import canoe_residential.space_heating as space_heating
 import canoe_residential.space_cooling as space_cooling
 import canoe_residential.water_heating as water_heating
@@ -74,31 +74,23 @@ def pre_process():
 
     # Time-slice tables: idempotent INSERT OR IGNORE so re-runs are safe.
     # canoe-base is expected to seed these; canoe-residential inserts them if absent.
-    for season in config.time['season'].unique():
-        sql, params = schema_models.SeasonLabel(season=season).to_insert_or_ignore_sql()
-        curs.execute(sql, params)
+    # v4.0: SeasonLabel and TimeSegmentFraction are gone; segment_fraction is now a
+    # field on TimeSeason (period-independent). TimeOfDay.hours defaults to 1.0 (1 h/tod).
+    tods_per_season = config.time.groupby('season')['tod'].count()
+    total_hours = len(config.time)
 
     for i, tod in enumerate(config.time['tod'].unique()):
         sql, params = schema_models.TimeOfDay(sequence=i, tod=tod).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
-    for period in config.model_periods:
-        for i, season in enumerate(config.time['season'].unique()):
-            sql, params = schema_models.TimeSeason(
-                period=period,
-                sequence=i,
-                season=season,
-            ).to_insert_or_ignore_sql()
-            curs.execute(sql, params)
-
-        for _h, row in config.time.iterrows():
-            sql, params = schema_models.TimeSegmentFraction(
-                period=period,
-                season=row['season'],
-                tod=row['tod'],
-                segfrac=1 / 8760,
-            ).to_insert_or_ignore_sql()
-            curs.execute(sql, params)
+    for i, season in enumerate(config.time['season'].unique()):
+        seg_frac = tods_per_season[season] / total_hours
+        sql, params = schema_models.TimeSeason(
+            sequence=i,
+            season=season,
+            segment_fraction=seg_frac,
+        ).to_insert_or_ignore_sql()
+        curs.execute(sql, params)
         
     # TimePeriod (future) and Region are B-category (Global) tables owned by canoe-base.
     # canoe-residential validates them in Step 0 (residential_sector.build_database)
@@ -117,7 +109,7 @@ def pre_process():
             flag=row['flag'],
             description=f"(PJ) {row['description']}",
             data_id=utils.data_id(),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
     for _end_use, row in end_use_demands.iterrows():
         sql, params = schema_models.Commodity(
@@ -125,7 +117,7 @@ def pre_process():
             flag='d',
             description=f"(PJ) {row['description']}",
             data_id=utils.data_id(),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
     
     if config.params['include_emissions']:
@@ -184,7 +176,7 @@ def pre_process():
         }
         for flag in row['flags'].split(','):
             tech_kwargs[flag.strip()] = 1
-        sql, params = schema_models.Technology(**tech_kwargs).to_replace_sql()
+        sql, params = schema_models.Technology(**tech_kwargs).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
         # Add future vintages to vintage dictionary
@@ -208,7 +200,7 @@ def pre_process():
         }
         for flag in row['flags'].split(','):
             tech_kwargs[flag.strip()] = 1
-        sql, params = schema_models.Technology(**tech_kwargs).to_replace_sql()
+        sql, params = schema_models.Technology(**tech_kwargs).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
         # Get equivalent future tech
@@ -281,7 +273,7 @@ def pre_aggregate_region(region):
             dq_tech=2,
             dq_time=3,
             data_id=utils.data_id(region),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
         if type(df0) is pd.DataFrame: df1 = df0.loc[aeo_equip]
@@ -326,7 +318,7 @@ def pre_aggregate_region(region):
                 dq_tech=2,
                 dq_time=3,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             
 
@@ -354,7 +346,7 @@ def pre_aggregate_region(region):
                         dq_tech=2,
                         dq_time=3,
                         data_id=utils.data_id(region),
-                    ).to_replace_sql()
+                    ).to_insert_or_ignore_sql()
                     curs.execute(sql, params)
 
 
@@ -389,7 +381,7 @@ def pre_aggregate_region(region):
                     dq_tech=2,
                     dq_time=3,
                     data_id=utils.data_id(region),
-                ).to_replace_sql()
+                ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
     
 
@@ -423,7 +415,7 @@ def pre_aggregate_region(region):
             dq_tech=3,
             dq_time=3,
             data_id=utils.data_id(region),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
         
 
@@ -452,7 +444,7 @@ def pre_aggregate_region(region):
                     dq_tech=3,
                     dq_time=3,
                     data_id=utils.data_id(region),
-                ).to_replace_sql()
+                ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
     
     """
@@ -481,7 +473,7 @@ def pre_aggregate_region(region):
             c2a=c2a,
             notes=f"({unit}) {note}",
             data_id=utils.data_id(region),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
     ## AEO future stock
@@ -499,7 +491,7 @@ def pre_aggregate_region(region):
             c2a=c2a,
             notes=f"({unit}) {note}",
             data_id=utils.data_id(region),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
     
 
@@ -525,7 +517,7 @@ def post_process():
     """
 
     # Add all existing vintages to existing time periods
-    vints = set([fetch[0] for fetch in curs.execute(f"SELECT vintage FROM Efficiency").fetchall() if fetch[0] not in config.model_periods])
+    vints = set([fetch[0] for fetch in curs.execute(f"SELECT vintage FROM {schema_models.Efficiency.__table_name__}").fetchall() if fetch[0] not in config.model_periods])
 
     for vint in vints:
         sql, params = schema_models.TimePeriod(
@@ -547,7 +539,7 @@ def post_process():
             source_id=reference.id,
             source=reference.citation,
             data_id=utils.data_id(),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
         
 
@@ -558,7 +550,7 @@ def post_process():
     """
 
     for id in sorted(config.data_ids):
-        sql, params = schema_models.DataSet(data_id=id).to_replace_sql()
+        sql, params = schema_models.DataSet(data_id=id).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
     # Check for missing data IDs
@@ -630,8 +622,8 @@ def post_process_region(region):
             
             # Get annual capacity factor from equivalent nrcan tech for which we have data
             acf = curs.execute(
-                f"""SELECT factor FROM LimitAnnualCapacityFactor
-                WHERE tech == '{nrcan_tech}'
+                f"""SELECT factor FROM {schema_models.LimitAnnualCapacityFactor.__table_name__}
+                WHERE tech_or_group == '{nrcan_tech}'
                 AND region == '{region}'
                 AND output_comm == '{out_comm}'
                 AND operator == 'le'"""
@@ -649,7 +641,7 @@ def post_process_region(region):
             for vintage in config.model_periods:
                 sql, params = schema_models.LimitAnnualCapacityFactor(
                     region=region,
-                    tech=tech,
+                    tech_or_group=tech,
                     vintage=vintage,
                     output_comm=out_comm,
                     operator='ge',
@@ -662,11 +654,11 @@ def post_process_region(region):
                     dq_tech=3,
                     dq_time=3,
                     data_id=utils.data_id(region),
-                ).to_replace_sql()
+                ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
                 sql, params = schema_models.LimitAnnualCapacityFactor(
                     region=region,
-                    tech=tech,
+                    tech_or_group=tech,
                     vintage=vintage,
                     output_comm=out_comm,
                     operator='le',
@@ -679,7 +671,7 @@ def post_process_region(region):
                     dq_tech=3,
                     dq_time=3,
                     data_id=utils.data_id(region),
-                ).to_replace_sql()
+                ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
          
 
@@ -838,7 +830,7 @@ def aggregate_dsd():
                             data_id=data_id,
                         ))
 
-            sql, params = schema_models.DemandSpecificDistribution.bulk_replace_into_sql(rows, include_nulls=True)
+            sql, params = schema_models.DemandSpecificDistribution.bulk_insert_or_ignore_sql(rows, include_nulls=True)
             curs.executemany(sql, params)
 
         pp.tight_layout()
@@ -879,7 +871,7 @@ def aggregate_emissions():
     for tech in config.all_techs:
 
         # Valid vintages and efficiencies from Efficiency table
-        rows = curs.execute(f"SELECT region, input_comm, tech, vintage, output_comm, efficiency FROM Efficiency WHERE tech == '{tech}'").fetchall()
+        rows = curs.execute(f"SELECT region, input_comm, tech, vintage, output_comm, efficiency FROM {schema_models.Efficiency.__table_name__} WHERE tech == '{tech}'").fetchall()
 
         for row in rows:
 
@@ -910,7 +902,7 @@ def aggregate_emissions():
                 dq_tech=4,
                 dq_time=1,
                 data_id=utils.data_id(row[0]),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
     
 
@@ -927,11 +919,11 @@ def aggregate_imports():
     curs = conn.cursor()
 
     # Get which fuel commodities are actually being used
-    used_comms = set([c[0] for c in curs.execute(f"SELECT input_comm FROM Efficiency").fetchall()])
+    used_comms = set([c[0] for c in curs.execute(f"SELECT input_comm FROM {schema_models.Efficiency.__table_name__}").fetchall()])
 
     # Get the last period the import is used in this region and convert to a lifetime, to prevent supply orphans
-    df_life = pd.read_sql_query("SELECT region, tech, lifetime FROM LifetimeTech", conn).set_index(['region','tech']).astype(int)
-    df_eff = pd.read_sql_query("SELECT region, input_comm, tech, vintage FROM Efficiency", conn)
+    df_life = pd.read_sql_query(f"SELECT region, tech, lifetime FROM {schema_models.LifetimeTech.__table_name__}", conn).set_index(['region','tech']).astype(int)
+    df_eff = pd.read_sql_query(f"SELECT region, input_comm, tech, vintage FROM {schema_models.Efficiency.__table_name__}", conn)
     df_eff = df_eff.loc[df_eff['tech'].isin(df_life.index.get_level_values('tech'))]
     df_eff['life'] = [
         row['vintage'] + df_life.loc[(row['region'], row['tech'])].iloc[0] - config.model_periods[0]
@@ -958,7 +950,7 @@ def aggregate_imports():
         }
         for flag in row['flags'].split(','):
             tech_kwargs[flag.strip()] = 1
-        sql, params = schema_models.Technology(**tech_kwargs).to_replace_sql()
+        sql, params = schema_models.Technology(**tech_kwargs).to_insert_or_ignore_sql()
         curs.execute(sql, params)
         
         for region in config.model_regions:
@@ -978,7 +970,7 @@ def aggregate_imports():
                 efficiency=1,
                 notes=description,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             
             if life < config.model_periods[-1] - config.model_periods[0]:
@@ -988,7 +980,7 @@ def aggregate_imports():
                     lifetime=life,
                     notes='(y) retires when no longer used',
                     data_id=utils.data_id(region),
-                ).to_replace_sql()
+                ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
             
     conn.commit()
@@ -1020,7 +1012,7 @@ def cleanup():
         for tech, row in config.existing_techs.iterrows():
             if row['end_use'] == 'appliances other': continue # Does not have capacity
 
-            exs_cap = curs.execute(f"SELECT sum(capacity) FROM ExistingCapacity WHERE tech == '{tech}' and region == '{region}'").fetchone()[0]
+            exs_cap = curs.execute(f"SELECT sum(capacity) FROM {schema_models.ExistingCapacity.__table_name__} WHERE tech == '{tech}' and region == '{region}'").fetchone()[0]
             if not exs_cap or exs_cap < config.params['existing_cap_tolerance']:
                 
                 # If no existing capacity for an existing tech, purge tech/region combo from database
@@ -1032,7 +1024,7 @@ def cleanup():
     for tech, row in config.existing_techs.iterrows():
         if row['end_use'] == 'appliances other': continue # Does not have capacity
 
-        exs_cap = curs.execute(f"SELECT sum(capacity) FROM ExistingCapacity WHERE tech == '{tech}'").fetchone()[0]
+        exs_cap = curs.execute(f"SELECT sum(capacity) FROM {schema_models.ExistingCapacity.__table_name__} WHERE tech == '{tech}'").fetchone()[0]
         if not exs_cap or exs_cap == 0:
             
             # If no existing capacity for an existing tech, purge tech/region combo from database

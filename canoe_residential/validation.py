@@ -6,6 +6,7 @@ Runs as Step 0 of build_database(), before any sector-specific writes.
 import sqlite3
 import pandas as pd
 from loguru import logger
+from canoe_schema.v4_0.models import TimePeriod, Region, TimeSeason, TimeOfDay
 
 
 def _check_periods(
@@ -14,7 +15,7 @@ def _check_periods(
     cur = conn.cursor()
     placeholders = ", ".join("?" * len(future_periods))
     cur.execute(
-        f"SELECT period, flag FROM TimePeriod WHERE period IN ({placeholders})",
+        f"SELECT period, flag FROM {TimePeriod.__table_name__} WHERE period IN ({placeholders})",
         future_periods,
     )
     found = {row[0]: row[1] for row in cur.fetchall()}
@@ -22,7 +23,7 @@ def _check_periods(
     issues = []
     for period in future_periods:
         if period not in found:
-            issues.append(f"period {period} missing from TimePeriod")
+            issues.append(f"period {period} missing from {TimePeriod.__table_name__}")
         elif found[period] != "f":
             issues.append(
                 f"period {period} has flag '{found[period]}', expected 'f'"
@@ -41,14 +42,14 @@ def _check_regions(
     cur = conn.cursor()
     placeholders = ", ".join("?" * len(regions))
     cur.execute(
-        f"SELECT region FROM Region WHERE region IN ({placeholders})",
+        f"SELECT region FROM {Region.__table_name__} WHERE region IN ({placeholders})",
         regions,
     )
     found = {row[0] for row in cur.fetchall()}
     missing = set(regions) - found
 
     if missing:
-        msg = f"Regions missing from Region table: {sorted(missing)}"
+        msg = f"Regions missing from {Region.__table_name__}: {sorted(missing)}"
         if validation_behavior == "error":
             raise ValueError(msg)
         logger.warning(msg)
@@ -68,7 +69,7 @@ def _check_time_slices(
     expected_seasons = time_df["season"].unique().tolist()
     placeholders = ", ".join("?" * len(expected_seasons))
     cur.execute(
-        f"SELECT season FROM SeasonLabel WHERE season IN ({placeholders})",
+        f"SELECT season FROM {TimeSeason.__table_name__} WHERE season IN ({placeholders})",
         expected_seasons,
     )
     missing_seasons = set(expected_seasons) - {row[0] for row in cur.fetchall()}
@@ -76,16 +77,16 @@ def _check_time_slices(
     expected_tods = time_df["tod"].unique().tolist()
     placeholders = ", ".join("?" * len(expected_tods))
     cur.execute(
-        f"SELECT tod FROM TimeOfDay WHERE tod IN ({placeholders})",
+        f"SELECT tod FROM {TimeOfDay.__table_name__} WHERE tod IN ({placeholders})",
         expected_tods,
     )
     missing_tods = set(expected_tods) - {row[0] for row in cur.fetchall()}
 
     issues = []
     if missing_seasons:
-        issues.append(f"seasons absent from SeasonLabel: {sorted(missing_seasons)}")
+        issues.append(f"seasons absent from {TimeSeason.__table_name__}: {sorted(missing_seasons)}")
     if missing_tods:
-        issues.append(f"times-of-day absent from TimeOfDay: {sorted(missing_tods)}")
+        issues.append(f"times-of-day absent from {TimeOfDay.__table_name__}: {sorted(missing_tods)}")
 
     if issues:
         # Always a warning: we INSERT OR IGNORE these, so they will be added by this run.

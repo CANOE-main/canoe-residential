@@ -7,7 +7,7 @@ import canoe_residential.utils as utils
 import canoe_residential.nrcan as nrcan
 import os
 import sqlite3
-from canoe_schema.v3_2 import models as schema_models
+from canoe_schema.v4_0 import models as schema_models
 from canoe_residential.setup import config
 
 # Shortens lines a bit
@@ -79,7 +79,7 @@ def aggregate_region(region):
                 dq_tech=1,
                 dq_time=3,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             
 
@@ -126,7 +126,7 @@ def aggregate_region(region):
             dq_tech=1,
             dq_time=3,
             data_id=utils.data_id(region),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
     
@@ -187,7 +187,7 @@ def aggregate_region(region):
                 dq_tech=1,
                 dq_time=1,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
         
 
@@ -210,7 +210,7 @@ def aggregate_region(region):
 
             sql, params = schema_models.LimitAnnualCapacityFactor(
                 region=region,
-                tech=tech,
+                tech_or_group=tech,
                 vintage=vint,
                 output_comm=water_heating['comm'],
                 operator='ge',
@@ -223,11 +223,11 @@ def aggregate_region(region):
                 dq_tech=1,
                 dq_time=3,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             sql, params = schema_models.LimitAnnualCapacityFactor(
                 region=region,
-                tech=tech,
+                tech_or_group=tech,
                 vintage=vint,
                 output_comm=water_heating['comm'],
                 operator='le',
@@ -240,7 +240,7 @@ def aggregate_region(region):
                 dq_tech=1,
                 dq_time=3,
                 data_id=utils.data_id(region),
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
 
 
