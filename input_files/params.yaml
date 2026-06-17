@@ -31,14 +31,11 @@ inflation_index: 'gdp_deflator' # gdp_deflator, general_cpi, energy_and_petroleu
 # For computational reasons
 dsd_tolerance: 0.02
 
-# sqlite_schema: "input_files/canoe_dataset_schema.sql"
-canoe_schema: "3.2"
 sqlite_database: "residential.sqlite"
 excel_template: "input_files/Template spreadsheet (make a copy).xlsx"
 excel_output: "residential.xlsx"
 
 ## Aggregation switches
-force_wipe_database: true # Forces clearing of all data in database prior to aggregation
 force_generate_weather_maps: false # Force regeneration of weather maps instead of using locally cached versions
 force_download: false # Forces downloading data again instead of using cached versions
 show_plots: true

@@ -6,38 +6,8 @@ Written by Ian David Elder for the CANOE model
 import os
 import pandas as pd
 import yaml
-import sqlite3
-from canoe_schema.sql import get_sql_schema
 
 import canoe_residential.statcan as statcan
-
-
-def instantiate_database():
-    
-    # Check if database exists or needs to be built
-    build_db = not os.path.exists(config.database_file)
-
-    # Connect to the new database file
-    conn = sqlite3.connect(config.database_file)
-    curs = conn.cursor() # Cursor object interacts with the sqlite db
-
-    # Build the database if it doesn't exist. Otherwise clear all data if forced
-    sql_schema = get_sql_schema(config.canoe_schema) 
-    if build_db:
-        curs.executescript(sql_schema)
-    elif config.params['force_wipe_database']:
-        tables = [t[0] for t in curs.execute("""SELECT name FROM sqlite_master WHERE type='table';""").fetchall()]
-        for table in tables: curs.execute(f"DELETE FROM '{table}'")
-        curs.executescript(sql_schema)
-        print("Database wiped prior to aggregation. See params.\n")
-
-    conn.commit()
-
-    # VACUUM operation to clean up any empty rows
-    conn.execute("VACUUM;")
-    conn.commit()
-
-    conn.close()
 
 
 
@@ -148,7 +118,6 @@ class config:
 
     def _get_files(cls):
 
-        config.canoe_schema = config.params['canoe_schema']
         config.database_file = config.params['sqlite_database']
         config.excel_template_file = config.params['excel_template']
         config.excel_target_file = config.params['excel_output']
