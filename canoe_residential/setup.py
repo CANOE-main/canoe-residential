@@ -6,11 +6,10 @@ Written by Ian David Elder for the CANOE model
 import os
 import pandas as pd
 import yaml
-import requests
-import urllib.request
-import zipfile
 import sqlite3
 from canoe_schema.sql import get_sql_schema
+
+import canoe_residential.statcan as statcan
 
 
 def instantiate_database():
@@ -176,96 +175,10 @@ class config:
     
     def _get_population_projections(cls) -> pd.DataFrame:
 
-        config.populations = dict()
+        config.populations = statcan.load_population_projections(
+            config.regions, config.cache_dir, config.params['force_download']
+        )
 
-        # Get historical population data from Statcan and take Q1
-        df_exs = config._get_statcan_table(17100009, usecols=[0,1,9])
-        df_exs = df_exs.loc[df_exs['REF_DATE'].str.contains('-01')]
-        df_exs['REF_DATE'] = df_exs['REF_DATE'].str.removesuffix("-01")
-
-        # Get projected population data from Statcan for M1 scenario
-        df_proj = config._get_statcan_table(17100057, usecols=[0,1,3,4,5,12])
-        df_proj['VALUE'] *= 1000
-        df_proj = df_proj.loc[
-            (df_proj['Projection scenario'] == 'Projection scenario M1: medium-growth') & 
-            (df_proj['Gender'] == 'Total - gender') &
-            (df_proj['Age group'] == 'All ages')]
-
-        # For each region, take historical first, then provincial, then index to Canadian when that runs out
-        for region, row in config.regions.iterrows():
-
-            if not row ['include']: continue
-            
-            # Existing data
-            exs = df_exs.loc[df_exs['GEO'].str.upper() == row['description'].upper()].dropna()
-
-            # Projected provincial data
-            prov = df_proj.loc[(df_proj['GEO'].str.upper() == row['description'].upper()) &
-                            (df_proj['REF_DATE'] > int(exs['REF_DATE'].values[-1]))].dropna()
-            
-            # Index missing provincial data to Canadian projections
-            ca = df_proj.loc[(df_proj['GEO'].str.upper() == 'CANADA') & 
-                            (df_proj['REF_DATE'] >= int(prov['REF_DATE'].values[-1]))].dropna()
-            ca['VALUE'] = ca['VALUE'].iloc[1::] * prov['VALUE'].values[-1] / ca['VALUE'].values[0]
-            ca.dropna(inplace=True)
-
-            # Create dataframe of population for all years
-            data = [*exs['VALUE'].to_list(), *prov['VALUE'].to_list(), *ca['VALUE'].to_list()]
-            pop = pd.DataFrame(index = range(int(exs['REF_DATE'].values[0]), int(ca['REF_DATE'].values[-1]+1)), data = [int(d) for d in data], columns=['population'])
-            pop.index.rename('year', inplace=True)
-
-            # Add to dictionary of regional population projections
-            config.populations[region] = pop
-
-        
-
-    # Have to put this here or it's awkward circular imports with utils
-    def _get_statcan_table(table, save_as=None, **kwargs):
-        
-        if save_as == None: save_as = f"statcan_{table}.csv"
-        if os.path.splitext(save_as)[1] != ".csv": save_as += ".csv"
-
-        if not config.params['force_download']  and os.path.isfile(config.cache_dir + save_as):
-
-            try:
-
-                df = pd.read_csv(config.cache_dir + save_as, index_col=0)
-                
-                print(f"Got Statcan table {table} from local cache.")
-                return df
-            
-            except Exception as e:
-
-                print(f"Could not get Statcan table {table} from local cache. Trying to download instead.")
-
-        # Make a request from the API for the table, returns response status and url for download
-        url = f"https://www150.statcan.gc.ca/t1/wds/rest/getFullTableDownloadCSV/{table}/en"
-        response = requests.get(url).json()
-
-        # If successful, download the table
-        if response['status'] == 'SUCCESS':
-
-            print(f"Downloading Statcan table {table}...")
-
-            # Download and open the zip file
-            filehandle,_ = urllib.request.urlretrieve(response['object'])
-            zip_file_object = zipfile.ZipFile(filehandle, 'r')
-
-            # Read the table from inside the zip file
-            from_file = zip_file_object.open(f"{table}.csv", "r")
-            df = pd.read_csv(from_file, **kwargs)
-            from_file.close()
-
-            df.to_csv(config.cache_dir + save_as)
-
-            print(f"Cached Statcan table {table}.")
-            return df
-
-        else:
-
-            print(f"Request for {table} from Statcan failed. Status: {response['status']}")
-            return None
-        
 
 
     def _get_rninja_api(cls):

@@ -4,6 +4,7 @@ Written by Ian David Elder for the CANOE model
 """
 
 import canoe_residential.utils as utils
+import canoe_residential.nrcan as nrcan
 import pandas as pd
 import os
 import sqlite3
@@ -96,8 +97,8 @@ def aggregate_region(region):
     ref = config.refs.get('nrcan')
 
     # Table 31: Appliance Stock by Appliance Type and Energy Source
-    t31_elc_stk = utils.get_compr_db(region, 31, 20, 26) # kunit
-    t31_ng_stk = utils.get_compr_db(region, 31, 38, 39) # kunit
+    t31_elc_stk = nrcan.get_compr_db(region, 31, 20, 26) # kunit
+    t31_ng_stk = nrcan.get_compr_db(region, 31, 38, 39) # kunit
     pop = config.populations[region]
 
     dems = dict() # sums up demand by end use
@@ -189,7 +190,7 @@ def aggregate_region(region):
     """
 
     # Table 13: Appliance Secondary Energy Use and GHG Emissions by Appliance Type
-    t13_sec = utils.get_compr_db(region, 13, 2, 9) # PJ
+    t13_sec = nrcan.get_compr_db(region, 13, 2, 9) # PJ
     
     ref = config.refs.get('nrcan')
 
@@ -239,7 +240,7 @@ def aggregate_region(region):
     uec_base_year = 2021 # TODO year should be 2022 but download link is broken
 
     # Generic unit energy consumption of nrcan technologies
-    hb_uec = utils.get_data(f"https://oee.nrcan.gc.ca/corporate/statistics/neud/dpa/data_e/downloads/handbook/Excel/{uec_base_year}/res_00_16_e.xls", skiprows=7)
+    hb_uec = nrcan.get_data(f"https://oee.nrcan.gc.ca/corporate/statistics/neud/dpa/data_e/downloads/handbook/Excel/{uec_base_year}/res_00_16_e.xls", skiprows=7)
     hb_uec: pd.DataFrame = hb_uec.drop('Unnamed: 0', axis=1).set_index('Unnamed: 1').dropna().astype(float, errors='ignore')
     hb_uec *= config.params['conversion_factors']['activity']['kwh'] * 1000 # /unity to /kunity
     hb_uec = hb_uec.drop(hb_uec.columns[-1], axis='columns') # totals column

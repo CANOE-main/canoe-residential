@@ -4,6 +4,7 @@ Written by Ian David Elder for the CANOE model
 """
 
 import canoe_residential.utils as utils
+import canoe_residential.nrcan as nrcan
 import os
 import sqlite3
 from canoe_schema.v3_2 import models as schema_models
@@ -93,7 +94,7 @@ def aggregate_region(region):
     ref = config.refs.get('nrcan_statcan')
 
     # Table 10: Water Heating Secondary Energy Use and GHG Emissions by Energy Source
-    t10_sec = utils.get_compr_db(region, 10, 3, 7)
+    t10_sec = nrcan.get_compr_db(region, 10, 3, 7)
 
     # Activity (PJ output) is secondary energy times efficiency, and demand is sum of activity
     activity = t10_sec.copy()
@@ -137,7 +138,7 @@ def aggregate_region(region):
     """
 
     # Table 28: Water Heater Stock by Building Type and Energy Source
-    t28_stk = utils.get_compr_db(region, 28, 15, 20) # kunit
+    t28_stk = nrcan.get_compr_db(region, 28, 15, 20) # kunit
 
     # Notes for database
     note = (

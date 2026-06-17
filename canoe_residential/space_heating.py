@@ -4,6 +4,7 @@ Written by Ian David Elder for the CANOE model
 """
 
 import canoe_residential.utils as utils
+import canoe_residential.nrcan as nrcan
 import pandas as pd
 import os
 import numpy as np
@@ -47,10 +48,10 @@ def aggregate_region(region):
     ref = config.refs.get('nrcan_statcan')
 
     # Table 8: Space Heating Secondary Energy Use by System Type
-    t8_sec = utils.get_compr_db(region, 8, 3, 17)
+    t8_sec = nrcan.get_compr_db(region, 8, 3, 17)
 
     # Table 26: Heating System Stock Efficiencies
-    t26_eff = utils.get_compr_db(region, 26, 2, 27) / 100 # to %
+    t26_eff = nrcan.get_compr_db(region, 26, 2, 27) / 100 # to %
 
     # Multiply secondary energy by efficiency to get output heating energy
     # Dual fuel systems make this a little painful
@@ -229,7 +230,7 @@ def aggregate_region(region):
     """
 
     # Table 21: Heating System Stock by Building Type and Heating System Type
-    t21_stk = utils.get_compr_db(region, 21, 16, 30) # kunit
+    t21_stk = nrcan.get_compr_db(region, 21, 16, 30) # kunit
 
     # Notes for database
     note = (

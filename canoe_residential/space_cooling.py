@@ -4,6 +4,7 @@ Written by Ian David Elder for the CANOE model
 """
 
 import canoe_residential.utils as utils
+import canoe_residential.nrcan as nrcan
 import pandas as pd
 import os
 import numpy as np
@@ -42,10 +43,10 @@ def aggregate_region(region):
     ref = config.refs.get('nrcan_statcan')
 
     # Table 4: Space Cooling Secondary Energy Use and GHG Emissions by Cooling System Type
-    t4_sec = utils.get_compr_db(region, 4, 3, 4)
+    t4_sec = nrcan.get_compr_db(region, 4, 3, 4)
 
     # Table 27: Cooling System Stock by Type, New Unit Efficiencies, Stock Efficiencies and Unit Capacity Ratio
-    t27_stk_eff = utils.get_compr_db(region, 27, 15, 16)
+    t27_stk_eff = nrcan.get_compr_db(region, 27, 15, 16)
     t27_stk_eff.index=t4_sec.index
     t27_stk_eff *= config.params['conversion_factors']['efficiency']['EER']
 
@@ -136,7 +137,7 @@ def aggregate_region(region):
     """
 
     # Existing cooling stock from NRCan data
-    t27_stk = utils.get_compr_db(region, 27, 3, 4) # kunit
+    t27_stk = nrcan.get_compr_db(region, 27, 3, 4) # kunit
 
     # Notes for database
     note = (

@@ -5,6 +5,7 @@ Written by Ian David Elder for the CANOE model
 
 from canoe_residential.setup import config
 import canoe_residential.utils as utils
+import canoe_residential.nrcan as nrcan
 import pandas as pd
 from scipy.special import gamma
 import sqlite3
@@ -727,7 +728,7 @@ def aggregate_dsd():
         for housing_type, file_name in config.params['resstock']['housing_files'].items():
             cons[state][housing_type] = dict()
 
-            df_res = utils.get_data(config.params['resstock']['url'].replace("<s>",state.upper()).replace("<f>", file_name).replace("<s>", state.lower()))
+            df_res = nrcan.get_data(config.params['resstock']['url'].replace("<s>",state.upper()).replace("<f>", file_name).replace("<s>", state.lower()))
             df_res = df_res.fillna(0).set_index('timestamp')
             stock = df_res['units_represented'].iloc[0]
 
@@ -760,7 +761,7 @@ def aggregate_dsd():
                 f"Chronological linear interpolation for any missing data.")
 
         # Table 14: Total Households by Building Type and Energy Source
-        t14 = utils.get_compr_db(region, 14, 9, 12)[base_year] / 100 # % shares
+        t14 = nrcan.get_compr_db(region, 14, 9, 12)[base_year] / 100 # % shares
 
         # Create figure and axes
         fig, axs = pp.subplots(4, 3, figsize=(15, 10))  # 4 rows, 3 columns
@@ -779,7 +780,16 @@ def aggregate_dsd():
             con_us = utils.realign_timezone(con_us, from_timezone='EST')
 
             # Map space heating, cooling to temperature and dew point temp (humidity). Note: this might introduce weather efficiency to the demand!
-            if eud_config['use_weather_map']: con_ca, time_of_week = weather_mapping.map_data(region, con_us.to_numpy())
+            if eud_config['use_weather_map']: con_ca, time_of_week = weather_mapping.map_data(
+                region,
+                con_us.to_numpy(),
+                config.regions.loc[region],
+                config.cache_dir,
+                config.params['weather_year'],
+                config.params['force_generate_weather_maps'],
+                config.params['weather'],
+                config.rninja_api,
+            )
             else: con_ca = con_us
 
             # Apply tolerance and normalise
@@ -868,7 +878,7 @@ def aggregate_emissions():
     ref = config.refs.add('epa', config.params['epa_reference'])
 
     # Get emissions factors for fuels in ktCO2eq/PJ_in
-    emis_fact = utils.get_data('https://www.epa.gov/system/files/other-files/2025-01/ghg-emission-factors-hub-2025.xlsx', skiprows=13, nrows=76, index_col=2)
+    emis_fact = nrcan.get_data('https://www.epa.gov/system/files/other-files/2025-01/ghg-emission-factors-hub-2025.xlsx', skiprows=13, nrows=76, index_col=2)
     emis_fact = emis_fact[['CO2 Factor', 'CH4 Factor', 'N2O Factor']].iloc[1::].dropna()
     emis_fact = emis_fact[pd.to_numeric(emis_fact['CO2 Factor'], errors='coerce').notnull()] # Removing NaN rows
     for fact in emis_fact.columns: emis_fact[fact] = emis_fact[fact].astype(float) * conversion_factors['epa_units'][fact.strip(' Factor')] * conversion_factors['gwp'][fact.strip(' Factor')]

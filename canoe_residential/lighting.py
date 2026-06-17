@@ -4,6 +4,8 @@ Written by Ian David Elder for the CANOE model
 """
 
 import canoe_residential.utils as utils
+import canoe_residential.nrcan as nrcan
+import canoe_residential.statcan as statcan
 import pandas as pd
 import os
 import numpy as np
@@ -30,7 +32,7 @@ acf = config.params['lighting']['annual_capacity_factor']
 """
 
 # Get provincial data on relative usage of different bulb types from Statcan table 38100048
-lgt_usage = utils.get_statcan_table(38100048)
+lgt_usage = statcan.get_statcan_table(38100048, config.cache_dir, config.params['force_download'])
 lgt_usage['GEO'] = lgt_usage['GEO'].str.lower()
 
 # Configuration file for lighting technologies, including Ontario shares data from residential end use survey
@@ -166,7 +168,7 @@ def aggregate_region(region):
     for col in reg_shares[['share_sf', 'share_mf']].columns: reg_shares[col] /= reg_shares[col].sum() # reset to sum 100%
 
     # Table 14: Total Households by Building Type and Energy Source
-    t14 = utils.get_compr_db(region, 14, 9, 12)[base_year] / 100 # % shares
+    t14 = nrcan.get_compr_db(region, 14, 9, 12)[base_year] / 100 # % shares
     
     # Aggregate subcategories of housing into single-family and multi-family
     for cat, subcats in config.params['housing_categories'].items():
@@ -192,7 +194,7 @@ def aggregate_region(region):
         exs_eff += exs_techs.loc[code_exs, 'efficacy'] * reg_shares.loc[code_exs, 'share_tot']
 
     # Table 3: Lighting Secondary Energy Use and GHG Emissions
-    sec = utils.get_compr_db(region, 3, 1, 1)[base_year].iloc[0]
+    sec = nrcan.get_compr_db(region, 3, 1, 1)[base_year].iloc[0]
 
     # Demand is secondary energy times 2018 average lighting stock efficacy, indexed to population growth
     pop = config.populations[region]
