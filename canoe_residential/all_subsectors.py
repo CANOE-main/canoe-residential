@@ -72,8 +72,14 @@ def pre_process():
     ##############################################################
     """
 
+    # Time-slice tables: idempotent INSERT OR IGNORE so re-runs are safe.
+    # canoe-base is expected to seed these; canoe-residential inserts them if absent.
     for season in config.time['season'].unique():
-        sql, params = schema_models.SeasonLabel(season=season).to_replace_sql()
+        sql, params = schema_models.SeasonLabel(season=season).to_insert_or_ignore_sql()
+        curs.execute(sql, params)
+
+    for i, tod in enumerate(config.time['tod'].unique()):
+        sql, params = schema_models.TimeOfDay(sequence=i, tod=tod).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
     for period in config.model_periods:
@@ -82,7 +88,7 @@ def pre_process():
                 period=period,
                 sequence=i,
                 season=season,
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
 
         for _h, row in config.time.iterrows():
@@ -91,27 +97,12 @@ def pre_process():
                 season=row['season'],
                 tod=row['tod'],
                 segfrac=1 / 8760,
-            ).to_replace_sql()
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
-
-    for i, tod in enumerate(config.time['tod'].unique()):
-        sql, params = schema_models.TimeOfDay(sequence=i, tod=tod).to_replace_sql()
-        curs.execute(sql, params)
         
-    for i, period in enumerate([*config.model_periods, config.model_periods[-1] + config.params['period_step']]):
-        sql, params = schema_models.TimePeriod(
-            sequence=i,
-            period=period,
-            flag='f',
-        ).to_replace_sql()
-        curs.execute(sql, params)
-
-    for region, row in config.regions[config.regions['include']].iterrows():
-        sql, params = schema_models.Region(
-            region=region,
-            notes=row['description'],
-        ).to_replace_sql()
-        curs.execute(sql, params)
+    # TimePeriod (future) and Region are B-category (Global) tables owned by canoe-base.
+    # canoe-residential validates them in Step 0 (residential_sector.build_database)
+    # and never writes to them.
 
 
     """
@@ -138,13 +129,14 @@ def pre_process():
         curs.execute(sql, params)
     
     if config.params['include_emissions']:
-        # CO2-equivalent emission commodity
+        # CO2-equivalent emission commodity: INSERT OR IGNORE so canoe-base or another
+        # module can define it first without conflict (see DECISIONS.md).
         sql, params = schema_models.Commodity(
             name=config.params['emission_commodity'],
             flag='e',
             description='(ktCO2eq) CO2-equivalent emissions',
             data_id=utils.data_id(),
-        ).to_replace_sql()
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
 

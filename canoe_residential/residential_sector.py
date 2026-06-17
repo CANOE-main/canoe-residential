@@ -4,11 +4,13 @@ Written by Ian David Elder for the CANOE model
 """
 
 import os
+import sqlite3
 import canoe_residential.all_subsectors as all_subsectors
 import canoe_residential.utils as utils
 import re
 import canoe_residential.model_reduction as model_reduction
 from canoe_residential.setup import config
+from canoe_residential.validation import validate_db_against_config
 from matplotlib import pyplot as pp
 
 
@@ -23,6 +25,10 @@ def build_database():
             f"Database not found: {config.database_file!r}. "
             "Create the database with canoe-base before running canoe-residential."
         )
+
+    # Step 0: validate config against global tables already in the DB.
+    with sqlite3.connect(config.database_file) as conn:
+        validate_db_against_config(config, conn)
 
     # Aggregate subsectors
     all_subsectors.aggregate()
