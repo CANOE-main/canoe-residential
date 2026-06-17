@@ -3,7 +3,6 @@ Aggregates residential non-subsector-specific data
 Written by Ian David Elder for the CANOE model
 """
 
-from canoe_residential.setup import config
 import canoe_residential.utils as utils
 import canoe_residential.nrcan as nrcan
 import pandas as pd
@@ -19,50 +18,38 @@ import canoe_residential.appliances as appliances
 from matplotlib import pyplot as pp
 import canoe_residential.weather_mapping as weather_mapping
 from canoe_residential.currency_conversion import conv_curr
-
-# Shortens lines a bit
-nrcan_techs = config.existing_techs
-aeo_techs = config.new_techs
-aeo_res_class = config.aeo_res_class
-aeo_res_equip = config.aeo_res_equip
-fuel_commodities = config.fuel_commodities
-end_use_demands = config.end_use_demands
-aeo_year = config.params['aeo_data_year']
-base_year = config.params['base_year']
-conversion_factors = config.params['conversion_factors']
+from canoe_residential.common import ResidentialRuntime
 
 
 
-def aggregate():
+def aggregate(runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
     print("Aggregating sub-sector data...\n")
 
-    pre_process()
-    
-    ## Aggregate subsectors
-    space_heating.aggregate()
-    space_cooling.aggregate()
-    water_heating.aggregate()
-    lighting.aggregate()
-    appliances.aggregate()
+    pre_process(runtime, conn)
 
-    if config.params['include_dsd']: aggregate_dsd()
-    if config.params['include_emissions']: aggregate_emissions()
+    ## Aggregate subsectors
+    space_heating.aggregate(runtime, conn)
+    space_cooling.aggregate(runtime, conn)
+    water_heating.aggregate(runtime, conn)
+    lighting.aggregate(runtime, conn)
+    appliances.aggregate(runtime, conn)
+
+    if runtime.cfg.include_dsd: aggregate_dsd(runtime, conn)
+    if runtime.cfg.include_emissions: aggregate_emissions(runtime, conn)
     # if config.params['include_imports']: aggregate_imports() # no longer supported
 
-    post_process()
+    post_process(runtime, conn)
 
-    cleanup()
+    cleanup(runtime, conn)
 
-    print(f"Sub-sector data aggregated into {os.path.basename(config.database_file)}\n")
+    print(f"Sub-sector data aggregated into {os.path.basename(runtime.cfg.db_dir)}\n")
 
 
 
 # For non-regional aggregation
-def pre_process():
+def pre_process(runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
-    # Connect to the new database file
-    conn = sqlite3.connect(config.database_file)
     curs = conn.cursor() # Cursor object interacts with the sqlite db
 
 
@@ -76,14 +63,14 @@ def pre_process():
     # canoe-base is expected to seed these; canoe-residential inserts them if absent.
     # v4.0: SeasonLabel and TimeSegmentFraction are gone; segment_fraction is now a
     # field on TimeSeason (period-independent). TimeOfDay.hours defaults to 1.0 (1 h/tod).
-    tods_per_season = config.time.groupby('season')['tod'].count()
-    total_hours = len(config.time)
+    tods_per_season = runtime.time.groupby('season')['tod'].count()
+    total_hours = len(runtime.time)
 
-    for i, tod in enumerate(config.time['tod'].unique()):
+    for i, tod in enumerate(runtime.time['tod'].unique()):
         sql, params = schema_models.TimeOfDay(sequence=i, tod=tod).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
-    for i, season in enumerate(config.time['season'].unique()):
+    for i, season in enumerate(runtime.time['season'].unique()):
         seg_frac = tods_per_season[season] / total_hours
         sql, params = schema_models.TimeSeason(
             sequence=i,
@@ -91,7 +78,7 @@ def pre_process():
             segment_fraction=seg_frac,
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
-        
+
     # TimePeriod (future) and Region are B-category (Global) tables owned by canoe-base.
     # canoe-residential validates them in Step 0 (residential_sector.build_database)
     # and never writes to them.
@@ -103,31 +90,31 @@ def pre_process():
     ##############################################################
     """
 
-    for _fuel, row in fuel_commodities.iterrows():
+    for _fuel, row in runtime.fuel_commodities.iterrows():
         sql, params = schema_models.Commodity(
             name=row['comm'],
             flag=row['flag'],
             description=f"(PJ) {row['description']}",
-            data_id=utils.data_id(),
+            data_id=utils.data_id(runtime),
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
-    for _end_use, row in end_use_demands.iterrows():
+    for _end_use, row in runtime.end_use_demands.iterrows():
         sql, params = schema_models.Commodity(
             name=row['comm'],
             flag='d',
             description=f"(PJ) {row['description']}",
-            data_id=utils.data_id(),
+            data_id=utils.data_id(runtime),
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
-    
-    if config.params['include_emissions']:
+
+    if runtime.cfg.include_emissions:
         # CO2-equivalent emission commodity: INSERT OR IGNORE so canoe-base or another
         # module can define it first without conflict (see DECISIONS.md).
         sql, params = schema_models.Commodity(
-            name=config.params['emission_commodity'],
+            name=runtime.cfg.emission_commodity,
             flag='e',
             description='(ktCO2eq) CO2-equivalent emissions',
-            data_id=utils.data_id(),
+            data_id=utils.data_id(runtime),
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
@@ -143,11 +130,11 @@ def pre_process():
     # Lifetimes
     ##############################################################
 
-    for aeo_class in aeo_res_class.index:
+    for aeo_class in runtime.aeo_res_class.index:
 
         # Get lifetime from mean of weibull distribution
-        weibull_k = aeo_res_class.loc[aeo_class, 'Weibull K']
-        weibull_l = aeo_res_class.loc[aeo_class, 'Weibull λ']
+        weibull_k = runtime.aeo_res_class.loc[aeo_class, 'Weibull K']
+        weibull_l = runtime.aeo_res_class.loc[aeo_class, 'Weibull λ']
 
         # There are double ups of class for heat pumps because two end uses
         if type(weibull_k) is pd.Series: weibull_k = weibull_k.iloc[0]
@@ -155,24 +142,24 @@ def pre_process():
 
         # Calculate lifetime and add to lifetimes dictionary
         lifetime = round(weibull_l * gamma(1 + 1/weibull_k)) # mean of weibull distribution
-        config.lifetimes[aeo_class] = lifetime
+        runtime.lifetimes[aeo_class] = lifetime
 
 
     ##############################################################
     # AEO data (new)
     ##############################################################
 
-    for tech, row in aeo_techs.iterrows():
+    for tech, row in runtime.new_techs.iterrows():
 
         if not row['include_new']: continue
-        
+
         tech_desc = f"{row.loc['end_uses']} - {row.loc['description']}"
         tech_kwargs = {
             'tech': tech,
             'flag': 'p',
             'sector': 'residential',
             'description': tech_desc,
-            'data_id': utils.data_id(),
+            'data_id': utils.data_id(runtime),
         }
         for flag in row['flags'].split(','):
             tech_kwargs[flag.strip()] = 1
@@ -180,14 +167,14 @@ def pre_process():
         curs.execute(sql, params)
 
         # Add future vintages to vintage dictionary
-        config.tech_vints[tech] = config.model_periods
+        runtime.tech_vints[tech] = runtime.cfg.future_periods
 
 
     ##############################################################
     # NRCan data (existing)
     ##############################################################
 
-    for tech, row in nrcan_techs.iterrows():
+    for tech, row in runtime.existing_techs.iterrows():
 
         tech_desc = f"{row.loc['end_use']} - {row.loc['description']}"
 
@@ -196,7 +183,7 @@ def pre_process():
             'flag': 'p',
             'sector': 'residential',
             'description': tech_desc,
-            'data_id': utils.data_id(),
+            'data_id': utils.data_id(runtime),
         }
         for flag in row['flags'].split(','):
             tech_kwargs[flag.strip()] = 1
@@ -208,24 +195,19 @@ def pre_process():
         if pd.isna(aeo_class): continue # should only apply to appliances other
 
         # Add lifetimes and feasible vintages to config dictionaries
-        exs_vints, _weights = utils.stock_vintages(config.lifetimes[aeo_class])
-        config.tech_vints[tech] = exs_vints
+        exs_vints, _weights = utils.stock_vintages(runtime.lifetimes[aeo_class], runtime.cfg.period_step, runtime.cfg.future_periods[0])
+        runtime.tech_vints[tech] = exs_vints
 
 
-    conn.commit()
-    conn.close()
-
-    for region in config.model_regions: pre_aggregate_region(region)
+    for region in runtime.cfg.province_list: pre_aggregate_region(region, runtime, conn)
 
     print(f"Pre aggregation complete.\n")
-        
+
 
 
 # For region-specific aggregation
-def pre_aggregate_region(region):
+def pre_aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
-    # Connect to the new database file
-    conn = sqlite3.connect(config.database_file)
     curs = conn.cursor() # Cursor object interacts with the sqlite db
 
     """
@@ -234,13 +216,13 @@ def pre_aggregate_region(region):
     ##############################################################
     """
 
-    cens_div = config.regions.loc[region, 'us_census_div']
+    cens_div = runtime.regions.loc[region, 'us_census_div']
 
-    ref = config.refs.get('aeo')
-    ref_updated = config.refs.add('aeo_updated', config.params['aeo_updated_reference'])
+    ref = runtime.refs.get('aeo')
+    ref_updated = runtime.refs.add('aeo_updated', runtime.cfg.aeo_updated_reference)
 
     # Narrow down the dataframe with each nested section to speed things up
-    df0 = aeo_res_equip.loc[(aeo_res_equip['Census Division'] == cens_div) | (aeo_res_equip['Census Division'] == 11)]
+    df0 = runtime.aeo_res_equip.loc[(runtime.aeo_res_equip['Census Division'] == cens_div) | (runtime.aeo_res_equip['Census Division'] == 11)]
 
 
     ##############################################################
@@ -248,19 +230,19 @@ def pre_aggregate_region(region):
     ##############################################################
 
     # All technologies from aeo technologies input csv
-    for tech, row in aeo_techs.iterrows():
+    for tech, row in runtime.new_techs.iterrows():
 
         if not row['include_new']: continue
 
         aeo_class = row['aeo_class']
         aeo_equip = row['aeo_equip']
 
-        in_comm = fuel_commodities.loc[row['fuel'], 'comm']
-        lifetime = config.lifetimes[aeo_class]
+        in_comm = runtime.fuel_commodities.loc[row['fuel'], 'comm']
+        lifetime = runtime.lifetimes[aeo_class]
 
         ## LifetimeTech
         note = f'(y) Mean of Weibull distribution for {aeo_class}'
-        ref = config.refs.get('aeo')
+        ref = runtime.refs.get('aeo')
         sql, params = schema_models.LifetimeTech(
             region=region,
             tech=tech,
@@ -272,7 +254,7 @@ def pre_aggregate_region(region):
             dq_struc=2,
             dq_tech=2,
             dq_time=3,
-            data_id=utils.data_id(region),
+            data_id=utils.data_id(runtime, region),
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
@@ -282,27 +264,27 @@ def pre_aggregate_region(region):
         end_uses = row.loc['end_uses'].split("+")
         end_use_ids = row.loc['end_use_ids'].split("+")
 
-        cap_unit = end_use_demands.loc[end_uses[0], 'cap_unit']
+        cap_unit = runtime.end_use_demands.loc[end_uses[0], 'cap_unit']
 
         # All future periods are valid vintages
-        for vint in config.tech_vints[tech]:
+        for vint in runtime.tech_vints[tech]:
 
-            yr = utils.data_year(vint) # end-of-period data year for this vintage
-            
+            yr = utils.data_year(vint, runtime) # end-of-period data year for this vintage
+
             if type(df1) is pd.DataFrame:
                 df2 = df1.loc[(df1['First Year']<=yr) & (yr<=df1['Last Year'])]
                 cost_invest = df2.loc[df2['Replacement Cost'] != 0]['Replacement Cost'].iloc[0]
             elif type(df1) is pd.Series:
                 df2 = df1 # only one row remaining
                 cost_invest = df2['Replacement Cost']
-            
+
             # AEO table splits heat pump costs between heating and cooling, annoyingly
             if row.loc['end_uses'] == 'space heating+space cooling': cost_invest *= 2
 
 
             ## CostInvest
-            cost_invest *= config.params['conversion_factors']['cost']['invest']
-            cost_invest = conv_curr(cost_invest)
+            cost_invest *= runtime.cfg.conversion_factors.cost.invest
+            cost_invest = conv_curr(runtime, cost_invest)
 
             sql, params = schema_models.CostInvest(
                 region=region,
@@ -317,17 +299,17 @@ def pre_aggregate_region(region):
                 dq_struc=2,
                 dq_tech=2,
                 dq_time=3,
-                data_id=utils.data_id(region),
+                data_id=utils.data_id(runtime, region),
             ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
-            
+
 
             ## CostFixed
-            cost_fixed = row['cost_fixed'] * config.params['conversion_factors']['cost']['fixed']
-            cost_fixed = conv_curr(cost_fixed)
+            cost_fixed = row['cost_fixed'] * runtime.cfg.conversion_factors.cost.fixed
+            cost_fixed = conv_curr(runtime, cost_fixed)
 
             if cost_fixed != 0:
-                for period in config.model_periods:
+                for period in runtime.cfg.future_periods:
 
                     if period < vint or vint + lifetime <= period: continue
 
@@ -345,7 +327,7 @@ def pre_aggregate_region(region):
                         dq_struc=2,
                         dq_tech=2,
                         dq_time=3,
-                        data_id=utils.data_id(region),
+                        data_id=utils.data_id(runtime, region),
                     ).to_insert_or_ignore_sql()
                     curs.execute(sql, params)
 
@@ -356,14 +338,14 @@ def pre_aggregate_region(region):
                 end_use = end_uses[e]
                 end_use_id = int(end_use_ids[e])
 
-                out_comm = end_use_demands.loc[end_use, 'comm']
-                
+                out_comm = runtime.end_use_demands.loc[end_use, 'comm']
+
                 if type(df2) is pd.DataFrame: eff = df2.loc[(df2['End Use'] == int(end_use_id))]['Efficiency'].iloc[0]
                 elif type(df2) is pd.Series: eff = df2['Efficiency'] # only one row remaining
 
-                eff_metric = aeo_res_class.loc[aeo_res_class['End Use'] == int(end_use_id)].loc[aeo_class, 'Efficiency Metric']
+                eff_metric = runtime.aeo_res_class.loc[runtime.aeo_res_class['End Use'] == int(end_use_id)].loc[aeo_class, 'Efficiency Metric']
                 if type(eff_metric) is pd.Series: eff_metric = eff_metric.iloc[0]
-                if eff_metric in config.params['conversion_factors']['efficiency'].keys(): eff *= config.params['conversion_factors']['efficiency'][eff_metric]
+                if eff_metric in runtime.cfg.conversion_factors.efficiency.keys(): eff *= runtime.cfg.conversion_factors.efficiency[eff_metric]
 
                 ## Default Efficiency
                 sql, params = schema_models.Efficiency(
@@ -380,28 +362,28 @@ def pre_aggregate_region(region):
                     dq_struc=2,
                     dq_tech=2,
                     dq_time=3,
-                    data_id=utils.data_id(region),
+                    data_id=utils.data_id(runtime, region),
                 ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
-    
+
 
     ##############################################################
     # NRCan data (existing)
     ##############################################################
 
-    for tech, row in nrcan_techs.iterrows():
-        
+    for tech, row in runtime.existing_techs.iterrows():
+
         ## CostFixed from aeo equivalent tech
         aeo_class = row['aeo_class']
         if pd.isna(aeo_class): continue # should only apply to appliances other
 
-        equiv_tech = aeo_techs.loc[aeo_techs['aeo_class']==aeo_class].index.values[0]
+        equiv_tech = runtime.new_techs.loc[runtime.new_techs['aeo_class']==aeo_class].index.values[0]
         note = f"Assumed same as {equiv_tech}."
 
 
         ## Lifetime
         # Doing this by region so that some regions can be skipped at aggregation phase
-        lifetime = config.lifetimes[aeo_class]
+        lifetime = runtime.lifetimes[aeo_class]
 
         sql, params = schema_models.LifetimeTech(
             region=region,
@@ -414,19 +396,19 @@ def pre_aggregate_region(region):
             dq_struc=2,
             dq_tech=3,
             dq_time=3,
-            data_id=utils.data_id(region),
+            data_id=utils.data_id(runtime, region),
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
-        
+
 
         ## CostFixed
-        cost_fixed = aeo_techs.loc[equiv_tech, 'cost_fixed'] * config.params['conversion_factors']['cost']['fixed']
-        cost_fixed = conv_curr(cost_fixed)
+        cost_fixed = runtime.new_techs.loc[equiv_tech, 'cost_fixed'] * runtime.cfg.conversion_factors.cost.fixed
+        cost_fixed = conv_curr(runtime, cost_fixed)
         if cost_fixed == 0: continue
 
-        for vint in config.tech_vints[tech]:
-            for period in config.model_periods:
-                
+        for vint in runtime.tech_vints[tech]:
+            for period in runtime.cfg.future_periods:
+
                 if period < vint or vint + lifetime <= period: continue
 
                 sql, params = schema_models.CostFixed(
@@ -443,10 +425,10 @@ def pre_aggregate_region(region):
                     dq_struc=2,
                     dq_tech=3,
                     dq_time=3,
-                    data_id=utils.data_id(region),
+                    data_id=utils.data_id(runtime, region),
                 ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
-    
+
     """
     ##############################################################
         Capacity to Activity
@@ -460,55 +442,49 @@ def pre_aggregate_region(region):
             "l capacity factors.")
 
     ## NRCan existing stock
-    for tech, row in nrcan_techs.iterrows():
+    for tech, row in runtime.existing_techs.iterrows():
         end_use = row['end_use']
 
-        c2a = end_use_demands.loc[end_use, 'c2a']
+        c2a = runtime.end_use_demands.loc[end_use, 'c2a']
         if pd.isna(c2a): continue
 
-        unit = f"{end_use_demands.loc[end_use, 'dem_unit']}/{end_use_demands.loc[end_use, 'cap_unit']}.y" # ACT/CAP.y
+        unit = f"{runtime.end_use_demands.loc[end_use, 'dem_unit']}/{runtime.end_use_demands.loc[end_use, 'cap_unit']}.y" # ACT/CAP.y
         sql, params = schema_models.CapacityToActivity(
             region=region,
             tech=tech,
             c2a=c2a,
             notes=f"({unit}) {note}",
-            data_id=utils.data_id(region),
+            data_id=utils.data_id(runtime, region),
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
     ## AEO future stock
-    for tech, row in aeo_techs.iterrows():
+    for tech, row in runtime.new_techs.iterrows():
 
         if not row['include_new']: continue
 
         end_uses = row['end_uses'].split('+')
 
-        c2a = end_use_demands.loc[end_uses[0], 'c2a'] # Must be the same for all end uses anyway
-        unit = f"{end_use_demands.loc[end_uses[0], 'dem_unit']}/{end_use_demands.loc[end_uses[0], 'cap_unit']}.y" # ACT/CAP.y
+        c2a = runtime.end_use_demands.loc[end_uses[0], 'c2a'] # Must be the same for all end uses anyway
+        unit = f"{runtime.end_use_demands.loc[end_uses[0], 'dem_unit']}/{runtime.end_use_demands.loc[end_uses[0], 'cap_unit']}.y" # ACT/CAP.y
         sql, params = schema_models.CapacityToActivity(
             region=region,
             tech=tech,
             c2a=c2a,
             notes=f"({unit}) {note}",
-            data_id=utils.data_id(region),
+            data_id=utils.data_id(runtime, region),
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
-    
-
-    conn.commit()
-    conn.close()
 
 
 
 # For non-regional post-subsector aggregation
-def post_process():
+def post_process(runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
-    for region in config.model_regions: post_process_region(region)
+    for region in runtime.cfg.province_list: post_process_region(region, runtime, conn)
 
-    # Connect to the new database file
-    conn = sqlite3.connect(config.database_file)
     curs = conn.cursor() # Cursor object interacts with the sqlite db
-    
+
 
     """
     ##############################################################
@@ -517,7 +493,7 @@ def post_process():
     """
 
     # Add all existing vintages to existing time periods
-    vints = set([fetch[0] for fetch in curs.execute(f"SELECT vintage FROM {schema_models.Efficiency.__table_name__}").fetchall() if fetch[0] not in config.model_periods])
+    vints = set([fetch[0] for fetch in curs.execute(f"SELECT vintage FROM {schema_models.Efficiency.__table_name__}").fetchall() if fetch[0] not in runtime.cfg.future_periods])
 
     for vint in vints:
         sql, params = schema_models.TimePeriod(
@@ -534,14 +510,14 @@ def post_process():
     """
 
     # Add all references in the bibliography to the references tables
-    for reference in config.refs:
+    for reference in runtime.refs:
         sql, params = schema_models.DataSource(
             source_id=reference.id,
             source=reference.citation,
-            data_id=utils.data_id(),
+            data_id=utils.data_id(runtime),
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
-        
+
 
     """
     ##############################################################
@@ -549,7 +525,7 @@ def post_process():
     ##############################################################
     """
 
-    for id in sorted(config.data_ids):
+    for id in sorted(runtime.data_ids):
         sql, params = schema_models.DataSet(data_id=id).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
@@ -568,20 +544,14 @@ def post_process():
                 all_good = False
 
     if all_good: print(" All good!")
-        
-
-    conn.commit()
-    conn.close()
 
     print(f"Post-aggregation complete.\n")
 
 
 
 # For regional post-subsector aggregation
-def post_process_region(region):
+def post_process_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
-    # Connect to the new database file
-    conn = sqlite3.connect(config.database_file)
     curs = conn.cursor() # Cursor object interacts with the sqlite db
 
     """
@@ -590,36 +560,36 @@ def post_process_region(region):
     ##############################################################
     """
 
-    ref = config.refs.get('nrcan_statcan')
+    ref = runtime.refs.get('nrcan_statcan')
 
     # In case we need to remove something
     all_tables = [fetch[0] for fetch in curs.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()]
     t_tables = [table for table in all_tables if 'tech' in [description[0] for description in curs.execute(f"SELECT * FROM '{table}'").description]]
     rt_tables = [table for table in t_tables if 'region' in [description[0] for description in curs.execute(f"SELECT * FROM '{table}'").description]]
-        
+
     ## AEO future stock
-    # Copy from NRCan existing stock    
-    for tech, row in aeo_techs.iterrows():
+    # Copy from NRCan existing stock
+    for tech, row in runtime.new_techs.iterrows():
 
         if not row['include_new']: continue
 
         if pd.isna(row['nrcan_equiv']):
             print(f"{tech} has no specific NRCan equivalent and so will have no annual capacity factor.")
             continue # no NRCan equivalent given
-        
+
         end_uses = row['end_uses'].split('+')
         nrcan_equivs = row['nrcan_equiv'].split('+')
-        nrcan_equivs = [nrcan_techs.loc[nrcan_techs['end_use'] + " - " + nrcan_techs['description'] == nrcan_equiv].index.values[0] for nrcan_equiv in nrcan_equivs]
+        nrcan_equivs = [runtime.existing_techs.loc[runtime.existing_techs['end_use'] + " - " + runtime.existing_techs['description'] == nrcan_equiv].index.values[0] for nrcan_equiv in nrcan_equivs]
 
         for e in range(len(end_uses)):
-            
+
             end_use = end_uses[e]
             nrcan_tech = nrcan_equivs[e]
-            
-            out_comm = end_use_demands.loc[end_use, 'comm']
-            
+
+            out_comm = runtime.end_use_demands.loc[end_use, 'comm']
+
             note = f"Assumed same as {nrcan_equivs[e]}"
-            
+
             # Get annual capacity factor from equivalent nrcan tech for which we have data
             acf = curs.execute(
                 f"""SELECT factor FROM {schema_models.LimitAnnualCapacityFactor.__table_name__}
@@ -638,7 +608,7 @@ def post_process_region(region):
                 continue
             else: acf = acf[0]
 
-            for vintage in config.model_periods:
+            for vintage in runtime.cfg.future_periods:
                 sql, params = schema_models.LimitAnnualCapacityFactor(
                     region=region,
                     tech_or_group=tech,
@@ -653,7 +623,7 @@ def post_process_region(region):
                     dq_struc=3,
                     dq_tech=3,
                     dq_time=3,
-                    data_id=utils.data_id(region),
+                    data_id=utils.data_id(runtime, region),
                 ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
                 sql, params = schema_models.LimitAnnualCapacityFactor(
@@ -670,23 +640,17 @@ def post_process_region(region):
                     dq_struc=3,
                     dq_tech=3,
                     dq_time=3,
-                    data_id=utils.data_id(region),
+                    data_id=utils.data_id(runtime, region),
                 ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
-         
-
-
-    conn.commit()
-    conn.close()
 
 
 
 # Doing all regions at once because some regions might share equivalent states and this process is slow
-def aggregate_dsd():
+def aggregate_dsd(runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
     print("Aggregating DSDs...")
 
-    conn = sqlite3.connect(config.database_file)
     curs = conn.cursor() # Cursor object interacts with the sqlite db
 
     """
@@ -695,57 +659,57 @@ def aggregate_dsd():
     ##############################################################
     """
 
-    weather_year = config.params['weather_year']
-    reference = (f"{config.params['resstock']['reference']}; "
-                 f"{config.params['weather']['reference']}; "
-                 f"{config.params['nrcan_reference']}; ")
-    ref = config.refs.add('dsd', reference)
+    weather_year = runtime.cfg.weather_year
+    reference = (f"{runtime.cfg.resstock.reference}; "
+                 f"{runtime.cfg.weather.reference}; "
+                 f"{runtime.cfg.nrcan_reference}; ")
+    ref = runtime.refs.add('dsd', reference)
 
-    res_config = pd.read_csv(config.input_files + 'resstock.csv', index_col=0)
+    res_config = pd.read_csv(runtime.cfg.input_files_dir + 'resstock.csv', index_col=0)
     cons = dict() # 8760 hourly energy consumption by state, housing type, and end use, (kWh)
 
     ## Get end use energy consumptions from resstock columns and divide by number of housing units represented
-    for state in config.regions.loc[config.regions['include']]['us_state'].unique():
+    for state in runtime.regions.loc[runtime.regions['include']]['us_state'].unique():
 
         cons[state] = dict()
 
-        for housing_type, file_name in config.params['resstock']['housing_files'].items():
+        for housing_type, file_name in runtime.cfg.resstock.housing_files.items():
             cons[state][housing_type] = dict()
 
-            df_res = nrcan.get_data(config.params['resstock']['url'].replace("<s>",state.upper()).replace("<f>", file_name).replace("<s>", state.lower()))
+            df_res = nrcan.get_data(runtime.cfg.resstock.url.replace("<s>",state.upper()).replace("<f>", file_name).replace("<s>", state.lower()), cache_dir=runtime.cfg.cache_dir, force_download=runtime.cfg.force_download)
             df_res = df_res.fillna(0).set_index('timestamp')
             stock = df_res['units_represented'].iloc[0]
 
-            for end_use in config.end_use_demands.index:
-                
+            for end_use in runtime.end_use_demands.index:
+
                 res_cols = res_config.loc[res_config['end_use'] == end_use]
 
                 for res_col in res_cols.index:
-                    
+
                     # Divide consumption by number of units represented to get consumption per household
                     con = df_res[res_col].iloc[[35039,*range(3,4*8760-3,4)]].astype(float).clip(lower=0) / float(stock) # 15-minutely so take every 4th
 
                     if end_use in cons[state][housing_type].keys(): cons[state][housing_type][end_use] += con
                     else: cons[state][housing_type][end_use] = con
 
-    
-    ## Multiply energy consumptions from resstock by province housing stocks, apply weather mapping, then normalise to DSD
-    for region in config.model_regions:
 
-        data_id = utils.data_id(region)
+    ## Multiply energy consumptions from resstock by province housing stocks, apply weather mapping, then normalise to DSD
+    for region in runtime.cfg.province_list:
+
+        data_id = utils.data_id(runtime, region)
 
         print(f"Aggregating DSDs for {region}...")
 
-        row = config.regions.loc[region]
+        row = runtime.regions.loc[region]
         state = row['us_state']
 
         note = (f"ResStock data for {state} (NREL, 2021) disaggregated by end use and building archetype and mapped from {state} {weather_year} air temperature "
                 f"and humidity to {region} {weather_year} temperature and humidity, taking the mean of matched hours (Renewables Ninja, {weather_year}). "
-                f"Reaggregated for {base_year} existing stock of housing archetypes in {region} (NRCan, {base_year})"
+                f"Reaggregated for {runtime.cfg.base_year} existing stock of housing archetypes in {region} (NRCan, {runtime.cfg.base_year})"
                 f"Chronological linear interpolation for any missing data.")
 
         # Table 14: Total Households by Building Type and Energy Source
-        t14 = nrcan.get_compr_db(region, 14, 9, 12)[base_year] / 100 # % shares
+        t14 = nrcan.get_compr_db(region, 14, regions_df=runtime.regions, nrcan_url=runtime.cfg.nrcan_url, base_year=runtime.cfg.base_year, cache_dir=runtime.cfg.cache_dir, force_download=runtime.cfg.force_download, first_row=9, last_row=12)[runtime.cfg.base_year] / 100 # % shares
 
         # Create figure and axes
         fig, axs = pp.subplots(4, 3, figsize=(15, 10))  # 4 rows, 3 columns
@@ -755,29 +719,29 @@ def aggregate_dsd():
         fig.suptitle(f"{region} demand specific distributions (blue). Weekly profile in red.")
 
         p = 0 # plot tracker
-        for end_use, eud_config in config.end_use_demands.iterrows():
+        for end_use, eud_config in runtime.end_use_demands.iterrows():
 
             demand_comm = eud_config['comm']
 
             # Consumption for each housing type times provincial stock of that housing type
             con_us = sum([t14[housing_type] * cons[state][housing_type][end_use] for housing_type in t14.index])
-            con_us = utils.realign_timezone(con_us, from_timezone='EST')
+            con_us = utils.realign_timezone(con_us, from_timezone='EST', default_timezone=runtime.cfg.timezone)
 
             # Map space heating, cooling to temperature and dew point temp (humidity). Note: this might introduce weather efficiency to the demand!
             if eud_config['use_weather_map']: con_ca, time_of_week = weather_mapping.map_data(
                 region,
                 con_us.to_numpy(),
-                config.regions.loc[region],
-                config.cache_dir,
-                config.params['weather_year'],
-                config.params['force_generate_weather_maps'],
-                config.params['weather'],
-                config.rninja_api,
+                runtime.regions.loc[region],
+                runtime.cfg.cache_dir,
+                runtime.cfg.weather_year,
+                runtime.cfg.force_generate_weather_maps,
+                runtime.cfg.weather.model_dump(),
+                runtime.rninja_api,
             )
             else: con_ca = con_us
 
             # Apply tolerance and normalise
-            con_ca.loc[con_ca < con_ca.mean() * config.params['dsd_tolerance']] = 0
+            con_ca.loc[con_ca < con_ca.mean() * runtime.cfg.dsd_tolerance] = 0
             dsd = (con_ca / con_ca.sum()).to_list()
 
             # For plotting DSDs
@@ -789,13 +753,13 @@ def aggregate_dsd():
             p+=1
 
             rows = []
-            for period in config.model_periods:
-                for h, time in config.time.iterrows():
+            for period in runtime.cfg.future_periods:
+                for h, time in runtime.time.iterrows():
 
                     seas = time['season']
                     tod = time['tod']
 
-                    if tod == config.time['tod'].iloc[0]:
+                    if tod == runtime.time['tod'].iloc[0]:
                         rows.append(schema_models.DemandSpecificDistribution(
                             region=region,
                             period=period,
@@ -835,20 +799,14 @@ def aggregate_dsd():
 
         pp.tight_layout()
 
-
-    conn.commit()
-    conn.close()
-
-    print(f"Demand specific distribution data aggregated into {os.path.basename(config.database_file)}\n")
+    print(f"Demand specific distribution data aggregated into {os.path.basename(runtime.cfg.db_dir)}\n")
 
 
 
-def aggregate_emissions():
+def aggregate_emissions(runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
-    # Connect to the new database file
-    conn = sqlite3.connect(config.database_file)
     curs = conn.cursor() # Cursor object interacts with the sqlite db
-    
+
 
     """
     ##############################################################
@@ -856,19 +814,19 @@ def aggregate_emissions():
     ##############################################################
     """
 
-    emis_comm = config.params['emission_commodity']
-    emis_units = config.params['emission_activity_units']
+    emis_comm = runtime.cfg.emission_commodity
+    emis_units = runtime.cfg.emission_activity_units
 
-    ref = config.refs.add('epa', config.params['epa_reference'])
+    ref = runtime.refs.add('epa', runtime.cfg.epa_reference)
 
     # Get emissions factors for fuels in ktCO2eq/PJ_in
-    emis_fact = nrcan.get_data('https://www.epa.gov/system/files/other-files/2025-01/ghg-emission-factors-hub-2025.xlsx', skiprows=13, nrows=76, index_col=2)
+    emis_fact = nrcan.get_data('https://www.epa.gov/system/files/other-files/2025-01/ghg-emission-factors-hub-2025.xlsx', cache_dir=runtime.cfg.cache_dir, force_download=runtime.cfg.force_download, skiprows=13, nrows=76, index_col=2)
     emis_fact = emis_fact[['CO2 Factor', 'CH4 Factor', 'N2O Factor']].iloc[1::].dropna()
     emis_fact = emis_fact[pd.to_numeric(emis_fact['CO2 Factor'], errors='coerce').notnull()] # Removing NaN rows
-    for fact in emis_fact.columns: emis_fact[fact] = emis_fact[fact].astype(float) * conversion_factors['epa_units'][fact.strip(' Factor')] * conversion_factors['gwp'][fact.strip(' Factor')]
+    for fact in emis_fact.columns: emis_fact[fact] = emis_fact[fact].astype(float) * runtime.cfg.conversion_factors.epa_units[fact.strip(' Factor')] * runtime.cfg.conversion_factors.gwp[fact.strip(' Factor')]
     emis_fact[emis_comm] = emis_fact.sum(axis=1)
 
-    for tech in config.all_techs:
+    for tech in runtime.all_techs:
 
         # Valid vintages and efficiencies from Efficiency table
         rows = curs.execute(f"SELECT region, input_comm, tech, vintage, output_comm, efficiency FROM {schema_models.Efficiency.__table_name__} WHERE tech == '{tech}'").fetchall()
@@ -876,14 +834,14 @@ def aggregate_emissions():
         for row in rows:
 
             # Input fuel by epa naming convention
-            epa_fuel = config.fuel_commodities.loc[config.fuel_commodities['comm'] == row[1], 'epa_fuel'].iloc[0]
+            epa_fuel = runtime.fuel_commodities.loc[runtime.fuel_commodities['comm'] == row[1], 'epa_fuel'].iloc[0]
             if pd.isna(epa_fuel): continue # doesn't need emissions
 
             # EmissionActivity is tied to OUTPUT energy so divide by efficiency
             emis_act = emis_fact.loc[epa_fuel, emis_comm] / row[5]
 
             # Note assumed fuel
-            note = f"Emissions factor using {epa_fuel} (EPA, {config.params['epa_year']}) divided by efficiency as emissions are per output unit energy."
+            note = f"Emissions factor using {epa_fuel} (EPA, {runtime.cfg.epa_year}) divided by efficiency as emissions are per output unit energy."
 
             sql, params = schema_models.EmissionActivity(
                 region=row[0],
@@ -901,21 +859,16 @@ def aggregate_emissions():
                 dq_struc=2,
                 dq_tech=4,
                 dq_time=1,
-                data_id=utils.data_id(row[0]),
+                data_id=utils.data_id(runtime, row[0]),
             ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
-    
 
-    conn.commit()
-    conn.close()
-
-    print(f"Emissions data aggregated into {os.path.basename(config.database_file)}\n")
+    print(f"Emissions data aggregated into {os.path.basename(runtime.cfg.db_dir)}\n")
 
 
 
-def aggregate_imports():
+def aggregate_imports(runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
-    conn = sqlite3.connect(config.database_file)
     curs = conn.cursor()
 
     # Get which fuel commodities are actually being used
@@ -926,19 +879,19 @@ def aggregate_imports():
     df_eff = pd.read_sql_query(f"SELECT region, input_comm, tech, vintage FROM {schema_models.Efficiency.__table_name__}", conn)
     df_eff = df_eff.loc[df_eff['tech'].isin(df_life.index.get_level_values('tech'))]
     df_eff['life'] = [
-        row['vintage'] + df_life.loc[(row['region'], row['tech'])].iloc[0] - config.model_periods[0]
+        row['vintage'] + df_life.loc[(row['region'], row['tech'])].iloc[0] - runtime.cfg.future_periods[0]
         for (_, row) in df_eff.iterrows()
     ]
     df_life = df_eff.groupby(['region','input_comm'])['life'].max().astype(int)
 
-    for tech, row in config.import_techs.iterrows():
-        
+    for tech, row in runtime.import_techs.iterrows():
+
         # Get CANOE nomenclature for imported commodity
-        out_comm = config.fuel_commodities.loc[row['out_comm']]
+        out_comm = runtime.fuel_commodities.loc[row['out_comm']]
 
         # Make sure the model is using this imported commodity otherwise skip
         if out_comm['comm'] not in used_comms: continue
-        
+
         description = f"import dummy for {out_comm['description']}"
 
         tech_kwargs = {
@@ -946,54 +899,49 @@ def aggregate_imports():
             'flag': 'p',
             'sector': 'residential',
             'description': description,
-            'data_id': utils.data_id(),
+            'data_id': utils.data_id(runtime),
         }
         for flag in row['flags'].split(','):
             tech_kwargs[flag.strip()] = 1
         sql, params = schema_models.Technology(**tech_kwargs).to_insert_or_ignore_sql()
         curs.execute(sql, params)
-        
-        for region in config.model_regions:
+
+        for region in runtime.cfg.province_list:
 
             if (region, out_comm['comm']) not in df_life.index: continue
-            
+
             # The dummy needs to retire when it is no longer used
             # (or it will be orphaned and removed by network checks)
             life = df_life.loc[(region, out_comm['comm'])]
 
             sql, params = schema_models.Efficiency(
                 region=region,
-                input_comm=config.fuel_commodities.loc[row['in_comm'], 'comm'],
+                input_comm=runtime.fuel_commodities.loc[row['in_comm'], 'comm'],
                 tech=tech,
-                vintage=config.model_periods[0],
+                vintage=runtime.cfg.future_periods[0],
                 output_comm=out_comm['comm'],
                 efficiency=1,
                 notes=description,
-                data_id=utils.data_id(region),
+                data_id=utils.data_id(runtime, region),
             ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
-            
-            if life < config.model_periods[-1] - config.model_periods[0]:
+
+            if life < runtime.cfg.future_periods[-1] - runtime.cfg.future_periods[0]:
                 sql, params = schema_models.LifetimeTech(
                     region=region,
                     tech=tech,
                     lifetime=life,
                     notes='(y) retires when no longer used',
-                    data_id=utils.data_id(region),
+                    data_id=utils.data_id(runtime, region),
                 ).to_insert_or_ignore_sql()
                 curs.execute(sql, params)
-            
-    conn.commit()
-    conn.close()
 
-    print(f"Imports aggregated into {os.path.basename(config.database_file)}\n")
+    print(f"Imports aggregated into {os.path.basename(runtime.cfg.db_dir)}\n")
 
 
 
-def cleanup():
+def cleanup(runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
-    # Connect to the new database file
-    conn = sqlite3.connect(config.database_file)
     curs = conn.cursor() # Cursor object interacts with the sqlite db
 
 
@@ -1008,38 +956,38 @@ def cleanup():
     t_tables = [table for table in all_tables if 'tech' in [description[0] for description in curs.execute(f"SELECT * FROM '{table}'").description]]
     rt_tables = [table for table in t_tables if 'region' in [description[0] for description in curs.execute(f"SELECT * FROM '{table}'").description]]
 
-    for region in config.model_regions:
-        for tech, row in config.existing_techs.iterrows():
+    for region in runtime.cfg.province_list:
+        for tech, row in runtime.existing_techs.iterrows():
             if row['end_use'] == 'appliances other': continue # Does not have capacity
 
             exs_cap = curs.execute(f"SELECT sum(capacity) FROM {schema_models.ExistingCapacity.__table_name__} WHERE tech == '{tech}' and region == '{region}'").fetchone()[0]
-            if not exs_cap or exs_cap < config.params['existing_cap_tolerance']:
-                
+            if not exs_cap or exs_cap < runtime.cfg.existing_cap_tolerance:
+
                 # If no existing capacity for an existing tech, purge tech/region combo from database
-                for table in rt_tables: 
+                for table in rt_tables:
                     curs.execute(f"DELETE FROM '{table}' WHERE tech == '{tech}' AND region == '{region}'")
 
                 print(f"Cleaned up existing region-tech with little or no existing capacity: ({region}, {tech})")
 
-    for tech, row in config.existing_techs.iterrows():
+    for tech, row in runtime.existing_techs.iterrows():
         if row['end_use'] == 'appliances other': continue # Does not have capacity
 
         exs_cap = curs.execute(f"SELECT sum(capacity) FROM {schema_models.ExistingCapacity.__table_name__} WHERE tech == '{tech}'").fetchone()[0]
         if not exs_cap or exs_cap == 0:
-            
+
             # If no existing capacity for an existing tech, purge tech/region combo from database
-            for table in t_tables: 
+            for table in t_tables:
                 curs.execute(f"DELETE FROM '{table}' WHERE tech == '{tech}'")
 
             print(f"Cleaned up existing tech with no existing capacity: {tech}")
-
-    conn.commit()
-    conn.close()
 
     print(f"Cleanup complete.\n")
 
 
 
 if __name__ == "__main__":
-    
-    aggregate()
+    from canoe_residential.setup import build_runtime
+    import sqlite3 as _sqlite3
+    rt = build_runtime()
+    with _sqlite3.connect(rt.cfg.db_dir) as _conn:
+        aggregate(rt, _conn)

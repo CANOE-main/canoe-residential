@@ -1,162 +1,120 @@
 """
-Sets up configuration for buildings sector aggregation
-Written by Ian David Elder for the CANOE model
+Loads configuration and data for canoe-residential.
+
+The `config` singleton is replaced by `build_runtime()`, which returns a
+`ResidentialRuntime` containing the typed `CANOEResidentialConfig` plus
+all DataFrames and mutable runtime state needed by the subsectors.
+
+Typical usage (from residential_sector.py):
+    runtime = build_runtime()
+    with sqlite3.connect(runtime.cfg.db_dir) as conn:
+        all_subsectors.aggregate(runtime, conn)
 """
 
 import os
+from pathlib import Path
+
 import pandas as pd
-import yaml
 
 import canoe_residential.statcan as statcan
+from canoe_residential.common import (
+    CANOEResidentialConfig,
+    ResidentialRuntime,
+    bibliography,
+)
+
+_DEFAULT_PARAMS = "input_files/params.yaml"
 
 
+def build_runtime(yaml_path: str = _DEFAULT_PARAMS) -> ResidentialRuntime:
+    """Load config + data files and return a populated ResidentialRuntime.
 
-class reference:
+    Args:
+        yaml_path: path to params.yaml (relative to the working directory).
     """
-    Stores a single reference and its attributes
-    - id: the unique id for the source_id column
-    - citation: the full citation to go in the DataSource table
-    """
+    cfg = CANOEResidentialConfig.validate_from_yaml(yaml_path)
 
-    id: str
-    citation: str
+    input_dir = Path(cfg.input_files_dir)
+    cache_dir = cfg.cache_dir
 
-    def __init__(self, id: str, citation: str):
-        self.id = id
-        self.citation = citation
+    # --- Input CSVs ---
+    existing_techs = pd.read_csv(input_dir / "existing_technologies.csv", index_col=0)
+    new_techs = pd.read_csv(input_dir / "new_technologies.csv", index_col=0)
+    import_techs = pd.read_csv(input_dir / "import_technologies.csv", index_col=0)
+    regions = pd.read_csv(input_dir / "regions.csv", index_col=0)
+    fuel_commodities = pd.read_csv(input_dir / "fuel_commodities.csv", index_col=0)
+    end_use_demands = pd.read_csv(input_dir / "end_use_demands.csv", index_col=0)
+    time_df = pd.read_csv(input_dir / "time.csv", index_col=0)
 
+    all_techs = [*new_techs.index.values, *existing_techs.index.values]
 
-class bibliography:
-    """This class stores references and handles unique indexing"""
+    # province_list: regions included in the run, from regions.csv
+    province_list = sorted(
+        regions.loc[regions["include"]].index.unique().tolist()
+    )
+    cfg = cfg.model_copy(update={"province_list": province_list})
 
-    references: dict[str, reference] = dict()
+    # --- AEO spreadsheet (priority item 2: offsets now in config) ---
+    rs = cfg.aeo_rsclass
+    aeo_res_class = pd.read_excel(
+        input_dir / "rsmess.xlsx",
+        sheet_name="RSCLASS",
+        skiprows=rs.skiprows,
+        nrows=rs.nrows,
+        index_col=rs.index_col,
+    ).iloc[rs.row_slice_start:, rs.col_slice_start:rs.col_slice_end]
 
-    def __iter__(self):
-        for name, ref in self.references.items():
-            yield ref
+    rq = cfg.aeo_rsmeqp
+    aeo_res_equip = pd.read_excel(
+        input_dir / "rsmess.xlsx",
+        sheet_name="RSMEQP",
+        skiprows=rq.skiprows,
+        nrows=rq.nrows,
+        index_col=rq.index_col,
+    ).iloc[rq.row_slice_start:, rq.col_slice_start:rq.col_slice_end]
 
-    def add(cls, name: str, citation: str) -> reference | None:
-        """Add a reference to the log and return the reference object"""
+    # --- Population projections (StatCan) ---
+    populations = statcan.load_population_projections(
+        regions, cache_dir, cfg.force_download
+    )
 
-        if name in cls.references:
-            return cls.references[name]
-        else:
-            num = len(cls.references.keys()) + 1
-            id = f"R{num}" if num >= 10 else f"R0{num}" # R01 -> R99 unique IDs
-            ref = reference(id=id, citation=citation)
-            cls.references[name] = ref
-            return ref
-    
-    def get(cls, name: str) -> reference | None:
-        """Returns a reference by its semantic name"""
+    # --- Renewables Ninja API token ---
+    try:
+        with open("input_files/rninja_api_token.txt") as f:
+            rninja_api = f.read().strip()
+    except FileNotFoundError:
+        rninja_api = ""
 
-        if name not in cls.references:
-            print(f"Tried to get a reference that had not been added yet: {name}")
-            return
-        else:
-            return cls.references[name]
+    # --- Currency conversion tables ---
+    currency_exchange = pd.read_csv(input_dir / "currency_exchange.csv", index_col=0)
+    currency_inflation = pd.read_csv(input_dir / "cad_inflation.csv", index_col=0)
 
+    # --- Pre-populate commonly used references ---
+    refs = bibliography()
+    refs.add("nrcan", cfg.nrcan_reference)
+    refs.add("aeo", cfg.aeo_reference)
+    refs.add("statcan", cfg.statcan_reference)
+    refs.add("nrcan_statcan", f"{cfg.nrcan_reference}; {cfg.statcan_reference}")
 
+    os.makedirs(cache_dir, exist_ok=True)
 
-class config:
+    print("Loaded canoe-residential config and data files.\n")
 
-    # File locations
-    _this_dir = "./"
-    input_files = _this_dir + 'input_files/'
-    cache_dir = _this_dir + "data_cache/"
-
-    if not os.path.exists(cache_dir): os.mkdir(cache_dir)
-
-    refs: bibliography = bibliography()
-    data_ids = set()
-
-    tech_vints = {}
-    lifetimes = {}
-
-    _instance = None # singleton pattern
-
-
-    def __new__(cls, *args, **kwargs):
-
-        if isinstance(cls._instance, cls): return cls._instance
-        cls._instance = super(config, cls).__new__(cls, *args, **kwargs)
-
-        cls._get_params(cls._instance)
-        cls._get_files(cls._instance)
-        cls._get_aeo_data(cls._instance)
-        cls._get_population_projections(cls._instance)
-        cls._get_rninja_api(cls._instance)
-        cls._add_references(cls._instance)
-
-        print('Instantiated setup config.\n')
-
-        return cls._instance
-
-
-    def _get_params(cls):
-        
-        stream = open(config.input_files + "params.yaml", 'r')
-        config.params = dict(yaml.load(stream, Loader=yaml.Loader))
-
-        config.new_techs = pd.read_csv(config.input_files + 'new_technologies.csv', index_col=0)
-        config.existing_techs = pd.read_csv(config.input_files + 'existing_technologies.csv', index_col=0)
-        config.import_techs = pd.read_csv(config.input_files + 'import_technologies.csv', index_col=0)
-        config.regions = pd.read_csv(config.input_files + 'regions.csv', index_col=0)
-        config.fuel_commodities = pd.read_csv(config.input_files + 'fuel_commodities.csv', index_col=0)
-        config.end_use_demands = pd.read_csv(config.input_files + 'end_use_demands.csv', index_col=0)
-        config.time = pd.read_csv(config.input_files + 'time.csv', index_col=0)
-
-        config.all_techs = [*config.new_techs.index.values, *config.existing_techs.index.values]
-
-        # Included regions and future periods
-        config.model_periods = list(config.params['model_periods'])
-        config.model_periods.sort()
-        config.model_regions = config.regions.loc[(config.regions['include'])].index.unique().to_list()
-        config.model_regions.sort()
-        
-
-
-    def _get_files(cls):
-
-        config.database_file = config.params['sqlite_database']
-        config.excel_template_file = config.params['excel_template']
-        config.excel_target_file = config.params['excel_output']
-
-
-
-    def _get_aeo_data(cls):
-
-        config.aeo_res_class = pd.read_excel(config.input_files + 'rsmess.xlsx',
-                                             sheet_name='RSCLASS', skiprows=19, nrows=31, index_col=20).iloc[1:,1:20]
-        config.aeo_res_equip = pd.read_excel(config.input_files + 'rsmess.xlsx',
-                                             sheet_name='RSMEQP', skiprows=21, nrows=867, index_col=29).iloc[2:,2:29]
-        
-
-    
-    def _add_references(cls):
-        """Adds some very commonly used references to the bibliography"""
-        config.refs.add('nrcan', config.params['nrcan_reference'])
-        config.refs.add('aeo', config.params['aeo_reference'])
-        config.refs.add('statcan', config.params['statcan_reference'])
-        config.refs.add('nrcan_statcan', f"{config.params['nrcan_reference']}; {config.params['statcan_reference']}")
-        
-
-    
-    def _get_population_projections(cls) -> pd.DataFrame:
-
-        config.populations = statcan.load_population_projections(
-            config.regions, config.cache_dir, config.params['force_download']
-        )
-
-
-
-    def _get_rninja_api(cls):
-
-        with open('input_files/rninja_api_token.txt') as token_file:
-            token = token_file.read()
-        config.rninja_api = token
-        
-
-
-# Instantiate on import
-config()
+    return ResidentialRuntime(
+        cfg=cfg,
+        existing_techs=existing_techs,
+        new_techs=new_techs,
+        import_techs=import_techs,
+        regions=regions,
+        fuel_commodities=fuel_commodities,
+        end_use_demands=end_use_demands,
+        time=time_df,
+        all_techs=all_techs,
+        aeo_res_class=aeo_res_class,
+        aeo_res_equip=aeo_res_equip,
+        populations=populations,
+        rninja_api=rninja_api,
+        currency_exchange=currency_exchange,
+        currency_inflation=currency_inflation,
+        refs=refs,
+    )

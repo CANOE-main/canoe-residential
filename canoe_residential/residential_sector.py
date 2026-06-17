@@ -5,46 +5,54 @@ Written by Ian David Elder for the CANOE model
 
 import os
 import sqlite3
+import re
+
 import canoe_residential.all_subsectors as all_subsectors
 import canoe_residential.utils as utils
-import re
 import canoe_residential.model_reduction as model_reduction
-from canoe_residential.setup import config
+from canoe_residential.setup import build_runtime
 from canoe_residential.validation import validate_db_against_config
 from matplotlib import pyplot as pp
 
 
-
 def build_database():
 
-    print(f"Aggregating residential sector into {os.path.basename(config.database_file)}...\n")
+    runtime = build_runtime()
+    cfg = runtime.cfg
+
+    print(f"Aggregating residential sector into {os.path.basename(cfg.db_dir)}...\n")
 
     # DB must already exist with schema applied (run canoe-base first).
-    if not os.path.exists(config.database_file):
+    if not os.path.exists(cfg.db_dir):
         raise FileNotFoundError(
-            f"Database not found: {config.database_file!r}. "
+            f"Database not found: {cfg.db_dir!r}. "
             "Create the database with canoe-base before running canoe-residential."
         )
 
     # Step 0: validate config against global tables already in the DB.
-    with sqlite3.connect(config.database_file) as conn:
-        validate_db_against_config(config, conn)
+    with sqlite3.connect(cfg.db_dir) as conn:
+        validate_db_against_config(runtime, conn)
 
     # Aggregate subsectors
-    all_subsectors.aggregate()
+    with sqlite3.connect(cfg.db_dir) as conn:
+        all_subsectors.aggregate(runtime, conn)
 
     # Convert data costs to final currency
-    # currency_conversion.convert_currencies()
+    # currency_conversion.convert_currencies(runtime, conn)
 
-    if config.params['simplify_model']: model_reduction.simplify_model()
-    if config.params['clone_to_xlsx']: utils.database_converter().clone_sqlite_to_excel()
+    if cfg.simplify_model:
+        model_reduction.simplify_model()
+    if cfg.clone_to_xlsx:
+        utils.database_converter().clone_sqlite_to_excel(
+            from_sqlite_file=cfg.db_dir,
+            to_excel_file=cfg.excel_output,
+            excel_template_file=cfg.excel_template,
+        )
 
-    #prep_high_res_testing()
-
-    print(f"Residential sector aggregated into {os.path.basename(config.database_file)}\n")
+    print(f"Residential sector aggregated into {os.path.basename(cfg.db_dir)}\n")
 
     # Show any plots that have been made
-    if config.params['show_plots']:
+    if cfg.show_plots:
         save_plots()
 
 
@@ -65,7 +73,5 @@ def save_plots(output_dir='output_plots'):
         print(f"Saved {filepath}")
 
 
-
 if __name__ == "__main__":
-    
     build_database()

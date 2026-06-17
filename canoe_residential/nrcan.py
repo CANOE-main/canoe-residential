@@ -19,15 +19,21 @@ import pandas as pd
 import requests
 
 import canoe_residential.utils as utils
-from canoe_residential.setup import config
 
 
-def _compr_db_url(region: str, table_number: int) -> str:
+def _compr_db_url(
+    region: str,
+    table_number: int,
+    *,
+    regions_df: pd.DataFrame,
+    nrcan_url: str,
+    base_year: int,
+) -> str:
     """Build a NRCan COMPR-DB table URL for the given region/table."""
-    nrcan_region = config.regions.loc[region, "nrcan_id"]
+    nrcan_region = regions_df.loc[region, "nrcan_id"]
     return (
-        str(config.params["nrcan_url"])
-        .replace("<y>", str(config.params["base_year"]))
+        str(nrcan_url)
+        .replace("<y>", str(base_year))
         .replace("<r>", nrcan_region.lower())
         .replace("<t>", str(table_number))
     )
@@ -35,6 +41,9 @@ def _compr_db_url(region: str, table_number: int) -> str:
 
 def get_data(
     url: str,
+    *,
+    cache_dir: str,
+    force_download: bool,
     file_type: str | None = None,
     cache_file_type: str | None = None,
     name: str | None = None,
@@ -44,7 +53,7 @@ def get_data(
     Generic downloader with local caching, used for CSV/Excel/XML sources.
 
     Returns: DataFrame (or parsed dict for XML), or None on failure.
-    Cache: {config.cache_dir}/{name}, derived from the URL filename unless given.
+    Cache: {cache_dir}/{name}, derived from the URL filename unless given.
     """
     if name is None:
         name = url.split("/")[-1].split("\\")[-1]
@@ -62,10 +71,10 @@ def get_data(
 
     if name.split(".")[-1] != cache_file_type:
         name = os.path.splitext(name)[0] + "." + cache_file_type
-    cache_file = config.cache_dir + name
+    cache_file = cache_dir + name
 
     data = None
-    if not config.params["force_download"] and os.path.isfile(cache_file):
+    if not force_download and os.path.isfile(cache_file):
         if cache_file_type == "csv":
             data = pd.read_csv(cache_file, index_col=0, dtype="unicode")
         elif cache_file_type == "pkl":
@@ -91,8 +100,8 @@ def get_data(
             print(e)
 
         try:
-            if not os.path.exists(config.cache_dir):
-                os.mkdir(config.cache_dir)
+            if not os.path.exists(cache_dir):
+                os.mkdir(cache_dir)
 
             if cache_file_type == "csv":
                 data.to_csv(cache_file)
@@ -108,16 +117,32 @@ def get_data(
 
 
 def get_compr_db(
-    region: str, table_number: int, first_row: int = 0, last_row: int | None = None
+    region: str,
+    table_number: int,
+    *,
+    regions_df: pd.DataFrame,
+    nrcan_url: str,
+    base_year: int,
+    cache_dir: str,
+    force_download: bool,
+    first_row: int = 0,
+    last_row: int | None = None,
 ) -> pd.DataFrame:
     """
     Fetch a NRCan COMPR-DB residential sector table for one region.
 
     Source: NRCan Comprehensive Energy Use Database, table `table_number`.
     Returns: DataFrame indexed by technology/category row label, columns = years.
-    Cache: {config.cache_dir}/<url-derived filename>.csv
+    Cache: {cache_dir}/<url-derived filename>.csv
     """
-    df = get_data(_compr_db_url(region, table_number), skiprows=10)
+    url = _compr_db_url(
+        region,
+        table_number,
+        regions_df=regions_df,
+        nrcan_url=nrcan_url,
+        base_year=base_year,
+    )
+    df = get_data(url, cache_dir=cache_dir, force_download=force_download, skiprows=10)
     df = df.loc[first_row:] if last_row is None else df.loc[first_row:last_row]
     df = df.drop("Unnamed: 0", axis=1).set_index("Unnamed: 1").dropna()
     df.index.name = None

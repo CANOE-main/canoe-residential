@@ -10,31 +10,26 @@ import os
 import numpy as np
 import sqlite3
 from canoe_schema.v4_0 import models as schema_models
-from canoe_residential.setup import config
-
-# Shortens lines a bit
-base_year = config.params['base_year']
-nrcan_ref = config.params['nrcan_reference']
-statcan_year = config.params['statcan_data_year']
-statcan_ref = config.params['statcan_reference']
-fuel_commodities = config.fuel_commodities
-nrcan_techs = config.existing_techs
-space_heating = config.end_use_demands.loc['space heating']
+from canoe_residential.common import ResidentialRuntime
 
 
-def aggregate():
+def aggregate(runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
-    for region in config.model_regions: aggregate_region(region)
+    for region in runtime.cfg.province_list: aggregate_region(region, runtime, conn)
 
-    print(f"Space heating data aggregated into {os.path.basename(config.database_file)}\n")
+    print(f"Space heating data aggregated into {os.path.basename(runtime.cfg.db_dir)}\n")
 
 
 
-def aggregate_region(region):
+def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
-    # Connect to the new database file
-    conn = sqlite3.connect(config.database_file)
     curs = conn.cursor() # Cursor object interacts with the sqlite db
+
+    base_year = runtime.cfg.base_year
+    statcan_year = runtime.cfg.statcan_data_year
+    fuel_commodities = runtime.fuel_commodities
+    nrcan_techs = runtime.existing_techs
+    space_heating = runtime.end_use_demands.loc['space heating']
 
     """
     ##############################################################
@@ -45,13 +40,23 @@ def aggregate_region(region):
     note = (f"Sum of {base_year} secondary energy multiplied by efficiency per technology (NRCan, {base_year}). "
             "Dual fuel boilers taken to consume only first listed fuel in this calculation. "
             f"Indexed to projected population (Statcan, {statcan_year})")
-    ref = config.refs.get('nrcan_statcan')
+    ref = runtime.refs.get('nrcan_statcan')
 
     # Table 8: Space Heating Secondary Energy Use by System Type
-    t8_sec = nrcan.get_compr_db(region, 8, 3, 17)
+    t8_sec = nrcan.get_compr_db(
+        region, 8,
+        regions_df=runtime.regions, nrcan_url=runtime.cfg.nrcan_url,
+        base_year=base_year, cache_dir=runtime.cfg.cache_dir,
+        force_download=runtime.cfg.force_download, first_row=3, last_row=17,
+    )
 
     # Table 26: Heating System Stock Efficiencies
-    t26_eff = nrcan.get_compr_db(region, 26, 2, 27) / 100 # to %
+    t26_eff = nrcan.get_compr_db(
+        region, 26,
+        regions_df=runtime.regions, nrcan_url=runtime.cfg.nrcan_url,
+        base_year=base_year, cache_dir=runtime.cfg.cache_dir,
+        force_download=runtime.cfg.force_download, first_row=2, last_row=27,
+    ) / 100 # to %
 
     # Multiply secondary energy by efficiency to get output heating energy
     # Dual fuel systems make this a little painful
@@ -75,12 +80,12 @@ def aggregate_region(region):
         activity.loc[nrcan_tech] *= eff
 
     # Index demand to population growth
-    pop = config.populations[region]
+    pop = runtime.populations[region]
     dem: pd.Series = activity.sum() * pop / pop.loc[base_year]
 
     # Write to database
-    for period in config.model_periods:
-        yr = utils.data_year(period)
+    for period in runtime.cfg.future_periods:
+        yr = utils.data_year(period, runtime)
         note = (
             f"Sum of {base_year} secondary energy multiplied by efficiency per technology (NRCan, {base_year}). "
             "Dual fuel boilers taken to consume only first listed fuel in this calculation. "
@@ -99,7 +104,7 @@ def aggregate_region(region):
             dq_struc=1,
             dq_tech=1,
             dq_time=3,
-            data_id=utils.data_id(region),
+            data_id=utils.data_id(runtime, region),
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
@@ -111,10 +116,10 @@ def aggregate_region(region):
     ##############################################################
     """
 
-    ref = config.refs.get('nrcan')
+    ref = runtime.refs.get('nrcan')
 
     tracker = dict() # tracking multiples of the same nrcan fuel type
-    for tech, row in config.existing_techs.iterrows():
+    for tech, row in runtime.existing_techs.iterrows():
         if row['end_use'] != 'space heating': continue
 
         # Get the NRCan nomenclature of the tech
@@ -145,8 +150,8 @@ def aggregate_region(region):
                 note = f"({space_heating['dem_unit']}/{in_comm['unit']}) from NRCan in {base_year}"
 
                 # Write dual fuel efficiencies to database
-                for vint in config.tech_vints[tech]:
-                    if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
+                for vint in runtime.tech_vints[tech]:
+                    if vint + runtime.lifetimes[row['aeo_class']] <= runtime.cfg.future_periods[0]: continue
 
                     sql, params = schema_models.Efficiency(
                         region=region,
@@ -162,10 +167,10 @@ def aggregate_region(region):
                         dq_struc=1,
                         dq_tech=1,
                         dq_time=3,
-                        data_id=utils.data_id(region),
+                        data_id=utils.data_id(runtime, region),
                     ).to_insert_or_ignore_sql()
                     curs.execute(sql, params)
-    
+
             continue
 
 
@@ -192,7 +197,7 @@ def aggregate_region(region):
             # This matches the demand calculation which is efficiency multiplied by secondary energy consumption
             eff = np.dot(effs, sec_energy) / sum(sec_energy)
 
-        ## Single fuel and single stock technologies    
+        ## Single fuel and single stock technologies
         else:
             note = f"({space_heating['dem_unit']}/{in_comm['unit']}) from NRCan in {base_year}"
             eff = t26_eff.loc[nrcan_stock, base_year]
@@ -200,9 +205,9 @@ def aggregate_region(region):
 
 
         # Write single fuel efficiencies to database
-        for vint in config.tech_vints[tech]:
-            if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
-            
+        for vint in runtime.tech_vints[tech]:
+            if vint + runtime.lifetimes[row['aeo_class']] <= runtime.cfg.future_periods[0]: continue
+
             sql, params = schema_models.Efficiency(
                 region=region,
                 input_comm=in_comm['comm'],
@@ -217,10 +222,10 @@ def aggregate_region(region):
                 dq_struc=1,
                 dq_tech=1,
                 dq_time=3,
-                data_id=utils.data_id(region),
+                data_id=utils.data_id(runtime, region),
             ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
-    
+
 
 
     """
@@ -230,7 +235,12 @@ def aggregate_region(region):
     """
 
     # Table 21: Heating System Stock by Building Type and Heating System Type
-    t21_stk = nrcan.get_compr_db(region, 21, 16, 30) # kunit
+    t21_stk = nrcan.get_compr_db(
+        region, 21,
+        regions_df=runtime.regions, nrcan_url=runtime.cfg.nrcan_url,
+        base_year=base_year, cache_dir=runtime.cfg.cache_dir,
+        force_download=runtime.cfg.force_download, first_row=16, last_row=30,
+    ) # kunit
 
     # Notes for database
     note = (
@@ -254,16 +264,20 @@ def aggregate_region(region):
         if existing_cap == 0:
             print(f"No existing capacity for space heating tech {tech} in region {region}. Skipped.")
             continue
-        
+
         # Distribute existing capacities evenly over feasible vintages
-        vints, weights = utils.stock_vintages(config.lifetimes[row['aeo_class']])
-        
+        vints, weights = utils.stock_vintages(
+            runtime.lifetimes[row['aeo_class']],
+            runtime.cfg.period_step,
+            runtime.cfg.future_periods[0],
+        )
+
         # Write existing capacities to database
         for v, vint in enumerate(vints):
 
             weight = weights[v]
 
-            if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
+            if vint + runtime.lifetimes[row['aeo_class']] <= runtime.cfg.future_periods[0]: continue
 
             exs_cap = existing_cap * weight
 
@@ -280,10 +294,10 @@ def aggregate_region(region):
                 dq_struc=1,
                 dq_tech=1,
                 dq_time=3,
-                data_id=utils.data_id(region),
+                data_id=utils.data_id(runtime, region),
             ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
-        
+
 
         ## Annual capacity factor for NRCan existing stock
         # (for new stock pulled in all sectors post processing)
@@ -300,7 +314,7 @@ def aggregate_region(region):
         acf = act / (existing_cap * c2a)
 
         for vint in vints:
-            if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
+            if vint + runtime.lifetimes[row['aeo_class']] <= runtime.cfg.future_periods[0]: continue
 
             sql, params = schema_models.LimitAnnualCapacityFactor(
                 region=region,
@@ -316,7 +330,7 @@ def aggregate_region(region):
                 dq_struc=1,
                 dq_tech=1,
                 dq_time=3,
-                data_id=utils.data_id(region),
+                data_id=utils.data_id(runtime, region),
             ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             sql, params = schema_models.LimitAnnualCapacityFactor(
@@ -333,23 +347,19 @@ def aggregate_region(region):
                 dq_struc=1,
                 dq_tech=1,
                 dq_time=3,
-                data_id=utils.data_id(region),
+                data_id=utils.data_id(runtime, region),
             ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
 
-    conn.commit()
-    conn.close()
-
-    if config.params['include_furnace_fans']: aggregate_furnace_fans(region)
+    if runtime.cfg.include_furnace_fans: aggregate_furnace_fans(region, runtime, conn)
 
 
 
-def aggregate_furnace_fans(region):
+def aggregate_furnace_fans(region: str, runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
-    # Connect to the new database file
-    conn = sqlite3.connect(config.database_file)
     curs = conn.cursor() # Cursor object interacts with the sqlite db
 
+    space_heating = runtime.end_use_demands.loc['space heating']
 
     """
     ##############################################################
@@ -357,38 +367,39 @@ def aggregate_furnace_fans(region):
     ##############################################################
     """
 
-    frn_fan = config.params['furnace_fans'] # parameters relating to furnace fans
-    eff = frn_fan['efficiency']
-    elc_comm = config.fuel_commodities.loc['electricity']
-    split = eff * frn_fan['output_split'] / (1 + eff * frn_fan['output_split']) # calculating TOS to achieve correct electricity consumption
+    frn_fan = runtime.cfg.furnace_fans # parameters relating to furnace fans
+    eff = frn_fan.efficiency
+    elc_comm = runtime.fuel_commodities.loc['electricity']
+    split = eff * frn_fan.output_split / (1 + eff * frn_fan.output_split) # calculating TOS to achieve correct electricity consumption
     tos_note = f"({elc_comm['unit']}/{space_heating['dem_unit']}) Furnace fan electricity consumption. x/(1+x) where x is assumed 6 kWh into fan / MMBtu out (nyserda, 2013)."
 
     # Get technologies that need furnace fan consumption (fan tag in AEO data and space heating end use)
-    fan_classes = config.aeo_res_class.loc[config.aeo_res_class['Furnace Fan Flag']==1].index.unique()
+    fan_classes = runtime.aeo_res_class.loc[runtime.aeo_res_class['Furnace Fan Flag']==1].index.unique()
+    nrcan_techs = runtime.existing_techs
     fan_techs = [
-        *config.existing_techs.loc[
-            (config.existing_techs['aeo_class'].isin(fan_classes))
-            & (config.existing_techs['end_use'] == 'space heating')
+        *runtime.existing_techs.loc[
+            (runtime.existing_techs['aeo_class'].isin(fan_classes))
+            & (runtime.existing_techs['end_use'] == 'space heating')
         ].index.values,
-        *config.new_techs.loc[
-            (config.new_techs['aeo_class'].isin(fan_classes))
-            & (config.new_techs['end_uses'].str.contains('space heating'))
-            & (config.new_techs['include_new'])
+        *runtime.new_techs.loc[
+            (runtime.new_techs['aeo_class'].isin(fan_classes))
+            & (runtime.new_techs['end_uses'].str.contains('space heating'))
+            & (runtime.new_techs['include_new'])
         ].index.values
     ]
 
-    ref = config.refs.add('furnace_fans', frn_fan['reference'])
+    ref = runtime.refs.add('furnace_fans', frn_fan.reference)
 
     for tech in fan_techs:
-        
-        vints = config.tech_vints[tech]
-        if tech in nrcan_techs.index: life = config.lifetimes[nrcan_techs.loc[tech, 'aeo_class']]
-        else: life = config.lifetimes[config.new_techs.loc[tech, 'aeo_class']]
+
+        vints = runtime.tech_vints[tech]
+        if tech in nrcan_techs.index: life = runtime.lifetimes[nrcan_techs.loc[tech, 'aeo_class']]
+        else: life = runtime.lifetimes[runtime.new_techs.loc[tech, 'aeo_class']]
 
         # Add a dummy process to convert input fan electricity to worthless dummy commodity
         # 100% efficiency so TechOutputSplit can be used
         for vint in vints:
-            if vint + life <= config.model_periods[0]: continue
+            if vint + life <= runtime.cfg.future_periods[0]: continue
 
             sql, params = schema_models.Efficiency(
                 region=region,
@@ -398,12 +409,12 @@ def aggregate_furnace_fans(region):
                 output_comm=elc_comm['comm'],
                 efficiency=eff,
                 notes='arbitrarily small non-zero efficiency',
-                data_id=utils.data_id(region),
+                data_id=utils.data_id(runtime, region),
             ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
-        
+
         # Set ratio of fan electricity consumption to output heat
-        for period in config.model_periods:
+        for period in runtime.cfg.future_periods:
             if max(vints) + life <= period: continue
 
             sql, params = schema_models.LimitTechOutputSplit(
@@ -420,16 +431,16 @@ def aggregate_furnace_fans(region):
                 dq_struc=3,
                 dq_tech=3,
                 dq_time=4,
-                data_id=utils.data_id(region),
+                data_id=utils.data_id(runtime, region),
             ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
-    
-
-    conn.commit()
-    conn.close()
 
 
 
 if __name__ == "__main__":
-    
-    aggregate()
+
+    from canoe_residential.setup import build_runtime
+    import sqlite3 as _sqlite3
+    rt = build_runtime()
+    with _sqlite3.connect(rt.cfg.db_dir) as _conn:
+        aggregate(rt, _conn)

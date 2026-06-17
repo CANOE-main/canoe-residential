@@ -8,6 +8,8 @@ import pandas as pd
 from loguru import logger
 from canoe_schema.v4_0.models import TimePeriod, Region, TimeSeason, TimeOfDay
 
+from canoe_residential.common import ResidentialRuntime
+
 
 def _check_periods(
     conn: sqlite3.Connection, future_periods: list[int], validation_behavior: str
@@ -96,23 +98,22 @@ def _check_time_slices(
         )
 
 
-def validate_db_against_config(cfg, conn: sqlite3.Connection) -> None:
+def validate_db_against_config(runtime: ResidentialRuntime, conn: sqlite3.Connection) -> None:
     """Validate the module config against global tables already in the DB.
 
-    `cfg` is the canoe_residential.setup.config singleton (duck-typed; a
-    CANOEResidentialConfig Pydantic model will replace it in a later workstream).
-    Raises ValueError (or warns) based on cfg.params.get('validation_behavior').
+    Raises ValueError (or warns) based on runtime.cfg.validation_behavior.
     """
-    validation_behavior = cfg.params.get("validation_behavior", "error")
+    cfg = runtime.cfg
+    validation_behavior = cfg.validation_behavior
 
     # TEMOA requires one extra boundary period beyond the last planning period.
     future_periods = [
-        *cfg.model_periods,
-        cfg.model_periods[-1] + cfg.params["period_step"],
+        *cfg.future_periods,
+        cfg.future_periods[-1] + cfg.period_step,
     ]
 
     _check_periods(conn, future_periods, validation_behavior)
-    _check_regions(conn, cfg.model_regions, validation_behavior)
+    _check_regions(conn, cfg.province_list, validation_behavior)
 
-    if cfg.params.get("include_dsd", False):
-        _check_time_slices(conn, cfg.time, validation_behavior)
+    if cfg.include_dsd:
+        _check_time_slices(conn, runtime.time, validation_behavior)
