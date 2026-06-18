@@ -23,16 +23,16 @@ from canoe_residential.common import (
     bibliography,
 )
 
-_DEFAULT_PARAMS = "input_files/params.yaml"
+_DEFAULT_PARAMS = "input_files/params.toml"
 
 
-def build_runtime(yaml_path: str = _DEFAULT_PARAMS) -> ResidentialRuntime:
+def build_runtime(toml_path: str = _DEFAULT_PARAMS) -> ResidentialRuntime:
     """Load config + data files and return a populated ResidentialRuntime.
 
     Args:
-        yaml_path: path to params.yaml (relative to the working directory).
+        toml_path: path to params.toml (relative to the working directory).
     """
-    cfg = CANOEResidentialConfig.validate_from_yaml(yaml_path)
+    cfg = CANOEResidentialConfig.validate_from_toml(toml_path)
 
     input_dir = Path(cfg.input_files_dir)
     cache_dir = cfg.cache_dir

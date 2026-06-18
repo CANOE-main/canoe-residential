@@ -1,7 +1,7 @@
 """
 Common types, config model, and runtime container for canoe-residential.
 
-CANOEResidentialConfig  — typed, YAML-loadable configuration (Pydantic).
+CANOEResidentialConfig  — typed, TOML-loadable configuration (Pydantic).
 ResidentialRuntime      — bundles cfg with loaded DataFrames and mutable
                           runtime state; passed to every subsector function.
 
@@ -13,11 +13,11 @@ Usage:
 """
 from __future__ import annotations
 
+import tomllib
 from dataclasses import dataclass, field
 from typing import Literal
 
 import pandas as pd
-import yaml
 from pydantic import BaseModel, ConfigDict
 
 
@@ -160,9 +160,9 @@ class bibliography:
 # ---------------------------------------------------------------------------
 
 class CANOEResidentialConfig(BaseModel):
-    """Typed, YAML-loadable configuration for canoe-residential.
+    """Typed, TOML-loadable configuration for canoe-residential.
 
-    Loaded via `CANOEResidentialConfig.validate_from_yaml(path)`.
+    Loaded via `CANOEResidentialConfig.validate_from_toml(path)`.
     DataFrames, mutable runtime state, and network-fetched data live
     separately in `ResidentialRuntime`.
     """
@@ -257,20 +257,15 @@ class CANOEResidentialConfig(BaseModel):
     )
 
     @classmethod
-    def validate_from_yaml(cls, yaml_path: str) -> "CANOEResidentialConfig":
-        """Load and validate config from params.yaml, mapping renamed fields."""
-        with open(yaml_path, "r") as f:
-            raw: dict = yaml.safe_load(f)
+    def validate_from_toml(cls, toml_path: str) -> "CANOEResidentialConfig":
+        """Load and validate config from params.toml.
 
-        # Renames: params.yaml key → CANOEResidentialConfig field name
-        raw["db_dir"] = raw.pop("sqlite_database")
-        raw["future_periods"] = sorted(raw.pop("model_periods"))
-        raw["version"] = raw.pop("data_version")
-
-        # Fields not present in YAML — use defaults from model
+        TOML keys match Pydantic field names directly — no renames needed.
+        """
+        with open(toml_path, "rb") as f:
+            raw: dict = tomllib.load(f)
         raw.setdefault("province_list", [])
         raw.setdefault("existing_periods", [])
-
         return cls.model_validate(raw)
 
 
