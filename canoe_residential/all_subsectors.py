@@ -23,12 +23,12 @@ from canoe_residential.common import ResidentialRuntime
 
 
 def aggregate(runtime: ResidentialRuntime, conn: sqlite3.Connection):
+    """Full orchestration for standalone / testing use. Production runs go through residential_sector.build_database()."""
 
     print("Aggregating sub-sector data...\n")
 
     pre_process(runtime, conn)
 
-    ## Aggregate subsectors
     space_heating.aggregate(runtime, conn)
     space_cooling.aggregate(runtime, conn)
     water_heating.aggregate(runtime, conn)
@@ -37,10 +37,10 @@ def aggregate(runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
     if runtime.cfg.include_dsd: aggregate_dsd(runtime, conn)
     if runtime.cfg.include_emissions: aggregate_emissions(runtime, conn)
-    # if config.params['include_imports']: aggregate_imports() # no longer supported
+    if runtime.cfg.include_imports: aggregate_imports(runtime, conn)
 
     post_process(runtime, conn)
-
+    write_provenance(runtime, conn)
     cleanup(runtime, conn)
 
     print(f"Sub-sector data aggregated into {os.path.basename(runtime.cfg.db_dir)}\n")
@@ -502,6 +502,14 @@ def post_process(runtime: ResidentialRuntime, conn: sqlite3.Connection):
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
+    print(f"Post-aggregation complete.\n")
+
+
+
+def write_provenance(runtime: ResidentialRuntime, conn: sqlite3.Connection):
+    """Write DataSource (bibliography) and DataSet (data_id registry) rows, then audit for missing data_ids."""
+
+    curs = conn.cursor()
 
     """
     ##############################################################
@@ -544,8 +552,6 @@ def post_process(runtime: ResidentialRuntime, conn: sqlite3.Connection):
                 all_good = False
 
     if all_good: print(" All good!")
-
-    print(f"Post-aggregation complete.\n")
 
 
 
