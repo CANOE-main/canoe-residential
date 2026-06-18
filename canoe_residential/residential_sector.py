@@ -15,7 +15,7 @@ import canoe_residential.space_heating as space_heating
 import canoe_residential.utils as utils
 import canoe_residential.water_heating as water_heating
 import canoe_residential.model_reduction as model_reduction
-from canoe_residential.setup import build_runtime
+from canoe_residential.runtime import build_runtime
 from canoe_residential.validation import validate_db_against_config
 from matplotlib import pyplot as pp
 

@@ -83,7 +83,7 @@ def convert_currencies(runtime: ResidentialRuntime, conn: sqlite3.Connection) ->
 
 
 if __name__ == "__main__":
-    from canoe_residential.setup import build_runtime
+    from canoe_residential.runtime import build_runtime
     import sqlite3 as _sqlite3
 
     rt = build_runtime()

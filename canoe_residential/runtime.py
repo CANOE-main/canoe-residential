@@ -13,7 +13,6 @@ Typical usage (from residential_sector.py):
 
 import os
 from pathlib import Path
-
 import pandas as pd
 
 import canoe_residential.statcan as statcan

@@ -439,7 +439,7 @@ def aggregate_furnace_fans(region: str, runtime: ResidentialRuntime, conn: sqlit
 
 if __name__ == "__main__":
 
-    from canoe_residential.setup import build_runtime
+    from canoe_residential.runtime import build_runtime
     import sqlite3 as _sqlite3
     rt = build_runtime()
     with _sqlite3.connect(rt.cfg.db_dir) as _conn:
