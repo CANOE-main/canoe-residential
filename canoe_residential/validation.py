@@ -6,7 +6,7 @@ Runs as Step 0 of build_database(), before any sector-specific writes.
 import sqlite3
 import pandas as pd
 from loguru import logger
-from canoe_schema.v4_0.models import TimePeriod, Region, TimeSeason, TimeOfDay
+from canoe_schema.v4_0.models import TimePeriod, Region, TimeSeason, TimeOfDay, MetadataReal
 
 from canoe_residential.common import ResidentialRuntime
 
@@ -98,6 +98,24 @@ def _check_time_slices(
         )
 
 
+def _check_discount_rate(
+    conn: sqlite3.Connection, validation_behavior: str
+) -> None:
+    cur = conn.cursor()
+    row = cur.execute(
+        f"SELECT value FROM {MetadataReal.__table_name__} WHERE element = 'global_discount_rate'"
+    ).fetchone()
+
+    if row is None or row[0] is None:
+        msg = (
+            f"'global_discount_rate' is missing or null in {MetadataReal.__table_name__}. "
+            "Set it in canoe-base before running canoe-residential."
+        )
+        if validation_behavior == "error":
+            raise ValueError(msg)
+        logger.warning(msg)
+
+
 def validate_db_against_config(runtime: ResidentialRuntime, conn: sqlite3.Connection) -> None:
     """Validate the module config against global tables already in the DB.
 
@@ -114,6 +132,7 @@ def validate_db_against_config(runtime: ResidentialRuntime, conn: sqlite3.Connec
 
     _check_periods(conn, future_periods, validation_behavior)
     _check_regions(conn, cfg.province_list, validation_behavior)
+    _check_discount_rate(conn, validation_behavior)
 
     if cfg.include_dsd:
         _check_time_slices(conn, runtime.time, validation_behavior)

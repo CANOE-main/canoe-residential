@@ -4,6 +4,7 @@ Written by Ian David Elder for the CANOE model
 """
 
 import sqlite3
+from canoe_schema.v4_0.models import MetadataReal
 # from canoe_residential.setup import config
 
 
@@ -12,6 +13,10 @@ def simplify_model():
     # Connect to the new database file
     conn = sqlite3.connect(config.database_file)
     curs = conn.cursor() # Cursor object interacts with the sqlite db
+
+    i = curs.execute(
+        f"SELECT value FROM {MetadataReal.__table_name__} WHERE element = 'global_discount_rate'"
+    ).fetchone()[0]
 
     for region in config.model_regions:
         for tech in config.all_techs:
@@ -31,7 +36,6 @@ def simplify_model():
                 # Amortise capital cost over the lifetime of the technology using global discount rate
                 cost_invest = curs.execute(f"SELECT data_cost_invest FROM CostInvest WHERE regions == '{region}' AND tech == '{tech}' AND vintage == {vint}").fetchone()
                 cost_invest = cost_invest[0] if cost_invest is not None else 0
-                i = config.params['global_discount_rate']
                 annuity = cost_invest * i * (1+i)**life / ((1+i)**life - 1)
 
                 # Get fixed cost from table

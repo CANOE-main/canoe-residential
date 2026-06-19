@@ -88,12 +88,27 @@ def build_runtime(toml_path: str = _DEFAULT_PARAMS) -> ResidentialRuntime:
     currency_exchange = pd.read_csv(input_dir / "currency_exchange.csv", index_col=0)
     currency_inflation = pd.read_csv(input_dir / "cad_inflation.csv", index_col=0)
 
-    # --- Pre-populate commonly used references ---
+    # --- Pre-register all fixed references in canonical order so that
+    #     source IDs (R01, R02, …) are stable regardless of which subsector
+    #     happens to call refs.add() first at runtime.
     refs = bibliography()
-    refs.add("nrcan", cfg.nrcan_reference)
-    refs.add("aeo", cfg.aeo_reference)
-    refs.add("statcan", cfg.statcan_reference)
-    refs.add("nrcan_statcan", f"{cfg.nrcan_reference}; {cfg.statcan_reference}")
+    refs.add("nrcan",         cfg.nrcan_reference)                                    # R01
+    refs.add("aeo",           cfg.aeo_reference)                                      # R02
+    refs.add("statcan",       cfg.statcan_reference)                                  # R03
+    refs.add("nrcan_statcan", f"{cfg.nrcan_reference}; {cfg.statcan_reference}")      # R04
+    refs.add("ontario_lighting_stock", cfg.lighting.on_stock_ref)                     # R05
+    refs.add("lighting_usage",         cfg.lighting.usage_ref)                        # R06
+    refs.add("aeo_updated",            cfg.aeo_updated_reference)                     # R07
+    refs.add("lighting_acf",           cfg.lighting.acf_reference)                    # R08
+    refs.add(                                                                          # R09
+        "lighting_existing_capacity",
+        f"{cfg.lighting.on_stock_ref}; {cfg.nrcan_reference}; "
+        f"{cfg.lighting.usage_ref}; {cfg.aeo_reference}",
+    )
+    refs.add("energy_handbook", cfg.handbook_reference)                               # R10
+    refs.add("nrcan_aeo", f"{cfg.nrcan_reference}; {cfg.aeo_reference}")             # R11
+    # Conditional refs (furnace_fans, dsd, epa) are registered by their
+    # subsectors when include_* flags are enabled; they follow from R12 onward.
 
     os.makedirs(cache_dir, exist_ok=True)
 

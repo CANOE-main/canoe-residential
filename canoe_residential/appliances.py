@@ -354,7 +354,7 @@ def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Con
                 f"but indexed to relative AEO efficiency in {yr} versus baseline efficiency."
             )
 
-            # Write to table
+            # Write to table — use REPLACE to override the AEO default written by pre_process
             sql, params = schema_models.Efficiency(
                 region=region,
                 input_comm=fuel_commodities.loc[row['fuel'], 'comm'],
@@ -370,5 +370,5 @@ def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Con
                 dq_tech=3,
                 dq_time=3,
                 data_id=utils.data_id(runtime, region),
-            ).to_insert_or_ignore_sql()
+            ).to_replace_sql()
             curs.execute(sql, params)

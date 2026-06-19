@@ -208,7 +208,6 @@ class CANOEResidentialConfig(BaseModel):
     )
 
     # --- Scalar settings ---
-    global_discount_rate: float
     existing_cap_tolerance: float
     dsd_tolerance: float
 

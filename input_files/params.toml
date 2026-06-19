@@ -31,7 +31,6 @@ excel_output   = "residential.xlsx"
 # Model settings
 # ---------------------------------------------------------------------------
 
-global_discount_rate  = 0.05
 existing_cap_tolerance = 0.1   # existing capacities below this are removed
 
 # Set DSD to zero if less than this × hourly average (for computational reasons)

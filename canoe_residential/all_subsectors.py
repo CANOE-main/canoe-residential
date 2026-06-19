@@ -957,10 +957,16 @@ def cleanup(runtime: ResidentialRuntime, conn: sqlite3.Connection):
     ##############################################################
     """
 
-    # Get all tables with tech and region indices
+    # Get all tables with tech / tech_or_group and region indices
     all_tables = [fetch[0] for fetch in curs.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()]
-    t_tables = [table for table in all_tables if 'tech' in [description[0] for description in curs.execute(f"SELECT * FROM '{table}'").description]]
-    rt_tables = [table for table in t_tables if 'region' in [description[0] for description in curs.execute(f"SELECT * FROM '{table}'").description]]
+
+    def _cols(table):
+        return [d[0] for d in curs.execute(f"SELECT * FROM '{table}'").description]
+
+    t_tables   = [t for t in all_tables if 'tech'          in _cols(t)]
+    tog_tables = [t for t in all_tables if 'tech_or_group' in _cols(t)]
+    rt_tables   = [t for t in t_tables   if 'region' in _cols(t)]
+    rtog_tables = [t for t in tog_tables if 'region' in _cols(t)]
 
     for region in runtime.cfg.province_list:
         for tech, row in runtime.existing_techs.iterrows():
@@ -972,6 +978,8 @@ def cleanup(runtime: ResidentialRuntime, conn: sqlite3.Connection):
                 # If no existing capacity for an existing tech, purge tech/region combo from database
                 for table in rt_tables:
                     curs.execute(f"DELETE FROM '{table}' WHERE tech == '{tech}' AND region == '{region}'")
+                for table in rtog_tables:
+                    curs.execute(f"DELETE FROM '{table}' WHERE tech_or_group == '{tech}' AND region == '{region}'")
 
                 print(f"Cleaned up existing region-tech with little or no existing capacity: ({region}, {tech})")
 
@@ -984,6 +992,8 @@ def cleanup(runtime: ResidentialRuntime, conn: sqlite3.Connection):
             # If no existing capacity for an existing tech, purge tech/region combo from database
             for table in t_tables:
                 curs.execute(f"DELETE FROM '{table}' WHERE tech == '{tech}'")
+            for table in tog_tables:
+                curs.execute(f"DELETE FROM '{table}' WHERE tech_or_group == '{tech}'")
 
             print(f"Cleaned up existing tech with no existing capacity: {tech}")
 
