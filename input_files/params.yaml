@@ -86,8 +86,8 @@ conversion_factors:
   activity:
     'kwh': 3.6e-9 # kWh to PJ
   cost:
-    'invest': 0.001 # $/unit to M$/kunit
-    'fixed': 0.001 # $/unit.y to M$/kunit.y
+    'kunit': 0.001 # $/unit to M$/kunit
+    'Munit': 1 # $/unit.y to M$/kunit.y
 
 furnace_fans:
   output_split: 0.0205 # PJ elc in / PJ heat out, from 6 kWh/MMBtu
@@ -96,7 +96,7 @@ furnace_fans:
   reference: 'nyserda. (2013, April 15). Gas Furnace Electricity Usage. https://www.taitem.com/wp-content/uploads/tt_furnace_electricity_use_20130507.pdf'
 
 appliances:
-  annual_capacity_factor: 0.05 # Arbitrary capacity factor for appliances so that existing capacity can satisfy peak demand
+  annual_capacity_factor: 0.15 # Arbitrary capacity factor for appliances so that existing capacity can satisfy peak demand
 
 lighting: 
   annual_capacity_factor: 0.0667 # 1.6/24

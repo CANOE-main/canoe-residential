@@ -316,7 +316,7 @@ def pre_aggregate_region(region):
 
 
             ## CostInvest
-            cost_invest *= config.params['conversion_factors']['cost']['invest']
+            cost_invest *= config.params['conversion_factors']['cost'][cap_unit]
             cost_invest = conv_curr(cost_invest)
 
             sql, params = schema_models.CostInvest(
@@ -338,7 +338,7 @@ def pre_aggregate_region(region):
             
 
             ## CostFixed
-            cost_fixed = row['cost_fixed'] * config.params['conversion_factors']['cost']['fixed']
+            cost_fixed = row['cost_fixed'] * config.params['conversion_factors']['cost'][cap_unit]
             cost_fixed = conv_curr(cost_fixed)
 
             if cost_fixed != 0:
@@ -432,10 +432,12 @@ def pre_aggregate_region(region):
             data_id=utils.data_id(region),
         ).to_replace_sql()
         curs.execute(sql, params)
-        
 
+        eud = end_use_demands.loc[row['end_use']]
+        cap_unit = eud['cap_unit']
+        
         ## CostFixed
-        cost_fixed = aeo_techs.loc[equiv_tech, 'cost_fixed'] * config.params['conversion_factors']['cost']['fixed']
+        cost_fixed = aeo_techs.loc[equiv_tech, 'cost_fixed'] * config.params['conversion_factors']['cost'][cap_unit]
         cost_fixed = conv_curr(cost_fixed)
         if cost_fixed == 0: continue
 
