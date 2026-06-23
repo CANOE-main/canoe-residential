@@ -96,7 +96,7 @@ furnace_fans:
   reference: 'nyserda. (2013, April 15). Gas Furnace Electricity Usage. https://www.taitem.com/wp-content/uploads/tt_furnace_electricity_use_20130507.pdf'
 
 appliances:
-  annual_capacity_factor: 0.05 # Arbitrary capacity factor for appliances so that existing capacity can satisfy peak demand
+  annual_capacity_factor: 0.15 # Arbitrary capacity factor for appliances so that existing capacity can satisfy peak demand
 
 lighting: 
   annual_capacity_factor: 0.0667 # 1.6/24
