@@ -86,8 +86,8 @@ conversion_factors:
   activity:
     'kwh': 3.6e-9 # kWh to PJ
   cost:
-    'invest': 0.001 # $/unit to M$/kunit
-    'fixed': 0.001 # $/unit.y to M$/kunit.y
+    'kunit': 0.001 # $/unit to M$/kunit
+    'Munit': 1 # $/unit.y to M$/kunit.y
 
 furnace_fans:
   output_split: 0.0205 # PJ elc in / PJ heat out, from 6 kWh/MMBtu

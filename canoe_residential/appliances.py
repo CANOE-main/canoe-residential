@@ -267,7 +267,7 @@ def aggregate_region(region):
             vints = config.tech_vints[techs[f]]
 
             fuel = fuel_commodities.loc[fuels[f]]
-            note = (f"({eud['dem_unit']}/{fuel['unit']}) From generic unit energy consumpion (UEC) of existing stock"
+            note = (f"({eud['dem_unit']}/{fuel['unit']}) From generic unit energy consumption (UEC) of existing stock"
                     " from Energy Use Data Handbook as provincial data cannot be disaggregated by both end use and fuel.")
 
             # Efficiency in Munity/PJ times acf because assumed actual activity is stock times acf
