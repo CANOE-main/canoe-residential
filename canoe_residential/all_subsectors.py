@@ -283,7 +283,7 @@ def pre_aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3
 
 
             ## CostInvest
-            cost_invest *= runtime.cfg.conversion_factors.cost.invest
+            cost_invest *= runtime.cfg.conversion_factors.cost.invest[cap_unit]
             cost_invest = conv_curr(runtime, cost_invest)
 
             sql, params = schema_models.CostInvest(
@@ -305,7 +305,7 @@ def pre_aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3
 
 
             ## CostFixed
-            cost_fixed = row['cost_fixed'] * runtime.cfg.conversion_factors.cost.fixed
+            cost_fixed = row['cost_fixed'] * runtime.cfg.conversion_factors.cost[cap_unit]
             cost_fixed = conv_curr(runtime, cost_fixed)
 
             if cost_fixed != 0:
@@ -399,9 +399,11 @@ def pre_aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3
             data_id=utils.data_id(runtime, region),
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
-
+        
 
         ## CostFixed
+        eud = end_use_demands.loc[row['end_use']]
+        cap_unit = eud['cap_unit']
         cost_fixed = runtime.new_techs.loc[equiv_tech, 'cost_fixed'] * runtime.cfg.conversion_factors.cost.fixed
         cost_fixed = conv_curr(runtime, cost_fixed)
         if cost_fixed == 0: continue

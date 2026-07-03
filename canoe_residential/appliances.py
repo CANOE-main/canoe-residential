@@ -99,13 +99,13 @@ def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Con
         regions_df=runtime.regions, nrcan_url=runtime.cfg.nrcan_url,
         base_year=base_year, cache_dir=runtime.cfg.cache_dir,
         force_download=runtime.cfg.force_download, first_row=20, last_row=26,
-    ) # kunit
+    ) / 1000 # kunit to Munit
     t31_ng_stk = nrcan.get_compr_db(
         region, 31,
         regions_df=runtime.regions, nrcan_url=runtime.cfg.nrcan_url,
         base_year=base_year, cache_dir=runtime.cfg.cache_dir,
         force_download=runtime.cfg.force_download, first_row=38, last_row=39,
-    ) # kunit
+    ) / 1000 # kunit to Munit
     pop = runtime.populations[region]
 
     dems = dict() # sums up demand by end use
@@ -215,11 +215,12 @@ def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Con
         if 'appliances' not in row['end_use']: continue
         if row['end_use'] in ['appliances clothes dryers', 'appliances cooking ranges']: continue
 
+        eud = end_use_demands.loc[row['end_use']]
         vints = [runtime.cfg.future_periods[0]] if row['end_use'] == 'appliances other' else runtime.tech_vints[tech]
 
-        note = (f"(kunity/PJ) {base_year} demand divided by {base_year} secondary energy consumption (NRCan, {base_year}). ")
+        note = (f"({eud['dem_unit']}/PJ) {base_year} demand divided by {base_year} secondary energy consumption (NRCan, {base_year}). ")
 
-        stock = t31_elc_stk.loc[row['nrcan_stocks'], base_year] # kunit
+        stock = t31_elc_stk.loc[row['nrcan_stocks'], base_year]
         sec = t13_sec.loc[row['nrcan_stocks'], base_year]
 
         # Times acf because assumed actual activity is stock times acf
@@ -262,7 +263,7 @@ def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Con
         skiprows=7,
     )
     hb_uec: pd.DataFrame = hb_uec.drop('Unnamed: 0', axis=1).set_index('Unnamed: 1').dropna().astype(float, errors='ignore')
-    hb_uec *= runtime.cfg.conversion_factors.activity.kwh * 1000 # /unity to /kunity
+    hb_uec *= runtime.cfg.conversion_factors.activity.kwh * 1E6 # /unity to /Munity
     hb_uec = hb_uec.drop(hb_uec.columns[-1], axis='columns') # totals column
     utils.clean_index(hb_uec)
     hb_uec.columns = [int(col) for col in hb_uec.columns]
@@ -271,9 +272,11 @@ def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Con
 
     fuels = ['electricity', 'natural gas'] # fuels to deal with
     hb_uecs = [hb_uec_elc, hb_uec_ng] # reciprocal of base efficiency is "energy consumption"
-
-    # Calculate efficiencies for each fuel in kunity/PJ
+    
+    # Calculate efficiencies for each fuel in Munity/PJ
     for end_use in ['appliances clothes dryers', 'appliances cooking ranges']:
+
+        eud = end_use_demands.loc[end_use]
 
         # Both ng and elc technologies for this end use
         techs = [exs_techs.loc[(exs_techs['end_use']==end_use) & (exs_techs['fuels']==fuel)].index.values[0] for fuel in fuels]
@@ -284,10 +287,10 @@ def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Con
             vints = runtime.tech_vints[techs[f]]
 
             fuel = fuel_commodities.loc[fuels[f]]
-            note = (f"({end_use_demands.loc[row['end_use'], 'dem_unit']}/{fuel['unit']}) From generic unit energy consumpion (UEC) of existing stock"
+            note = (f"({end_use_demands.loc[row['end_use'], 'dem_unit']}/{fuel['unit']}) From generic unit energy consumption (UEC) of existing stock"
                     " from Energy Use Data Handbook as provincial data cannot be disaggregated by both end use and fuel.")
 
-            # Efficiency in kunity/PJ times acf because assumed actual activity is stock times acf
+            # Efficiency in Munity/PJ times acf because assumed actual activity is stock times acf
             eff_exs = 1/hb_uecs[f].loc[row['nrcan_stocks'], uec_base_year] * acf
 
             ## Existing Efficiency
@@ -329,6 +332,8 @@ def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Con
         if 'appliances' not in row['end_uses']: continue
         if not row['include_new']: continue
 
+        eud = end_use_demands.loc[row['end_uses']]
+
         # Relevant to this tech
         df1 = df0.loc[row['aeo_equip']]
 
@@ -350,7 +355,7 @@ def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Con
             else: eff = eff_exs * base_eff / new_eff # efficiency units are energy consumption so invert
 
             note = (
-                f"(kunity/PJ) Efficiency assumed same as {nrcan_tech} "
+                f"({eud['dem_unit']}/PJ) Efficiency assumed same as {nrcan_tech} "
                 f"but indexed to relative AEO efficiency in {yr} versus baseline efficiency."
             )
 
@@ -360,7 +365,7 @@ def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Con
                 input_comm=fuel_commodities.loc[row['fuel'], 'comm'],
                 tech=tech,
                 vintage=vint,
-                output_comm=end_use_demands.loc[row['end_uses'], 'comm'],
+                output_comm=eud['comm'],
                 efficiency=eff,
                 notes=note,
                 data_source=ref.id,
