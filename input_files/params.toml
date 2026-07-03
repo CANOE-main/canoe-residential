@@ -119,8 +119,10 @@ cost     = 1.0      # $/klmy  → M$/Glmy
 kwh = 3.6e-9 # kWh → PJ
 
 [conversion_factors.cost]
-invest = 0.001 # $/unit   → M$/kunit
-fixed  = 0.001 # $/unit.y → M$/kunit.y
+# invest = 0.001 # $/unit   → M$/kunit
+# fixed  = 0.001 # $/unit.y → M$/kunit.y
+kunit = 0.001 # $/unit to M$/kunit
+Munit = 1 # $/unit.y to M$/kunit.y
 
 # ---------------------------------------------------------------------------
 # Furnace fans
@@ -137,7 +139,7 @@ reference    = "nyserda. (2013, April 15). Gas Furnace Electricity Usage. https:
 # ---------------------------------------------------------------------------
 
 [appliances]
-annual_capacity_factor = 0.05 # arbitrary — ensures existing capacity satisfies peak demand
+annual_capacity_factor = 0.15 # Arbitrary capacity factor for appliances so that existing capacity can satisfy peak demand
 
 # ---------------------------------------------------------------------------
 # Lighting

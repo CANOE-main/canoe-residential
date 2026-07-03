@@ -35,9 +35,9 @@ class ActivityConvConfig(BaseModel):
     kwh: float
 
 
-class CostConvConfig(BaseModel):
-    invest: float
-    fixed: float
+# class CostConvConfig(BaseModel):
+#     invest: float
+#     fixed: float
 
 
 class ConversionFactors(BaseModel):
@@ -51,7 +51,7 @@ class ConversionFactors(BaseModel):
     efficiency: dict[str, float]
     lighting: LightingConvConfig
     activity: ActivityConvConfig
-    cost: CostConvConfig
+    cost: dict[str, float]
 
 
 class FurnaceFanConfig(BaseModel):
