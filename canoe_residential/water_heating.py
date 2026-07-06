@@ -4,38 +4,31 @@ Written by Ian David Elder for the CANOE model
 """
 
 import canoe_residential.utils as utils
+import canoe_residential.nrcan as nrcan
 import os
 import sqlite3
-from canoe_schema.v3_2 import models as schema_models
-from canoe_residential.setup import config
+from canoe_schema.v4_0 import models as schema_models
+from canoe_residential.common import ResidentialRuntime
 
-# Shortens lines a bit
-base_year = config.params['base_year']
-aeo_year = config.params['aeo_data_year']
-statcan_year = config.params['statcan_data_year']
-fuel_commodities = config.fuel_commodities
-nrcan_techs = config.existing_techs
-aeo_techs = config.new_techs
-aeo_res_class = config.aeo_res_class
-aeo_res_equip = config.aeo_res_equip
-water_heating = config.end_use_demands.loc['water heating']
+
+def aggregate(runtime: ResidentialRuntime, conn: sqlite3.Connection):
+
+    for region in runtime.cfg.province_list: aggregate_region(region, runtime, conn)
+
+    print(f"Water heating data aggregated into {os.path.basename(runtime.cfg.db_dir)}\n")
 
 
 
-def aggregate():
+def aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3.Connection):
 
-    for region in config.model_regions: aggregate_region(region)
-    
-    print(f"Water heating data aggregated into {os.path.basename(config.database_file)}\n")
-
-
-
-def aggregate_region(region):
-
-    # Connect to the new database file
-    conn = sqlite3.connect(config.database_file)
     curs = conn.cursor() # Cursor object interacts with the sqlite db
 
+    base_year = runtime.cfg.base_year
+    statcan_year = runtime.cfg.statcan_data_year
+    fuel_commodities = runtime.fuel_commodities
+    nrcan_techs = runtime.existing_techs
+    aeo_res_class = runtime.aeo_res_class
+    water_heating = runtime.end_use_demands.loc['water heating']
 
 
     """
@@ -45,9 +38,9 @@ def aggregate_region(region):
     """
 
     stock_effs = dict() # track efficiencies by nrcan stock
-    ref = config.refs.get('aeo')
+    ref = runtime.refs.get('aeo')
 
-    for tech, row in config.existing_techs.iterrows():
+    for tech, row in runtime.existing_techs.iterrows():
         if row['end_use'] != 'water heating': continue
 
         # Input commodity
@@ -60,8 +53,8 @@ def aggregate_region(region):
         stock_effs[row['nrcan_stocks']] = eff
 
         # Write single fuel efficiencies to database
-        for vint in config.tech_vints[tech]:
-            if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
+        for vint in runtime.tech_vints[tech]:
+            if vint + runtime.lifetimes[row['aeo_class']] <= runtime.cfg.future_periods[0]: continue
 
             sql, params = schema_models.Efficiency(
                 region=region,
@@ -77,10 +70,10 @@ def aggregate_region(region):
                 dq_struc=3,
                 dq_tech=1,
                 dq_time=3,
-                data_id=utils.data_id(region),
-            ).to_replace_sql()
+                data_id=utils.data_id(runtime, region),
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
-            
+
 
 
     """
@@ -89,11 +82,15 @@ def aggregate_region(region):
     ##############################################################
     """
 
-
-    ref = config.refs.get('nrcan_statcan')
+    ref = runtime.refs.get('nrcan_statcan')
 
     # Table 10: Water Heating Secondary Energy Use and GHG Emissions by Energy Source
-    t10_sec = utils.get_compr_db(region, 10, 3, 7)
+    t10_sec = nrcan.get_compr_db(
+        region, 10,
+        regions_df=runtime.regions, nrcan_url=runtime.cfg.nrcan_url,
+        base_year=base_year, cache_dir=runtime.cfg.cache_dir,
+        force_download=runtime.cfg.force_download, first_row=3, last_row=7,
+    )
 
     # Activity (PJ output) is secondary energy times efficiency, and demand is sum of activity
     activity = t10_sec.copy()
@@ -101,12 +98,12 @@ def aggregate_region(region):
         row *= stock_effs[nrcan_stock]
 
     # Index demand to population growth
-    pop = config.populations[region]
+    pop = runtime.populations[region]
     dem = activity[base_year].sum() * pop / pop.loc[base_year]
 
     # Write to database
-    for period in config.model_periods:
-        yr = utils.data_year(period)
+    for period in runtime.cfg.future_periods:
+        yr = utils.data_year(period, runtime)
         note = (
             f"Sum of {base_year} secondary energy multiplied by efficiency per technology (NRCan, {base_year}). "
             f"Indexed to projected populationin {yr} (Statcan, {statcan_year})"
@@ -124,11 +121,11 @@ def aggregate_region(region):
             dq_struc=3,
             dq_tech=1,
             dq_time=3,
-            data_id=utils.data_id(region),
-        ).to_replace_sql()
+            data_id=utils.data_id(runtime, region),
+        ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
 
-    
+
 
     """
     ##############################################################
@@ -137,14 +134,19 @@ def aggregate_region(region):
     """
 
     # Table 28: Water Heater Stock by Building Type and Energy Source
-    t28_stk = utils.get_compr_db(region, 28, 15, 20) # kunit
+    t28_stk = nrcan.get_compr_db(
+        region, 28,
+        regions_df=runtime.regions, nrcan_url=runtime.cfg.nrcan_url,
+        base_year=base_year, cache_dir=runtime.cfg.cache_dir,
+        force_download=runtime.cfg.force_download, first_row=15, last_row=20,
+    ) # kunit
 
     # Notes for database
     note = (
         f"{base_year} stock (NRCan, {base_year}) carried forward to last existing vintage"
          " and distributed evenly over feasible existing vintages."
     )
-    ref = config.refs.get('nrcan')
+    ref = runtime.refs.get('nrcan')
 
     # Get existing capacities from NRCan stock and distribute over past vintages
     for tech, row in nrcan_techs.iterrows():
@@ -159,16 +161,20 @@ def aggregate_region(region):
         if existing_cap == 0:
             print(f"No existing capacity for water heating tech {tech} in region {region}. Skipped.")
             continue
-        
+
         # Distribute existing capacities evenly over feasible vintages
-        vints, weights = utils.stock_vintages(config.lifetimes[row['aeo_class']])
-        
+        vints, weights = utils.stock_vintages(
+            runtime.lifetimes[row['aeo_class']],
+            runtime.cfg.period_step,
+            runtime.cfg.future_periods[0],
+        )
+
         # Write existing capacities to database
         for v, vint in enumerate(vints):
 
             weight = weights[v]
 
-            if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
+            if vint + runtime.lifetimes[row['aeo_class']] <= runtime.cfg.future_periods[0]: continue
 
             exs_cap = existing_cap * weight
 
@@ -185,10 +191,10 @@ def aggregate_region(region):
                 dq_struc=2,
                 dq_tech=1,
                 dq_time=1,
-                data_id=utils.data_id(region),
-            ).to_replace_sql()
+                data_id=utils.data_id(runtime, region),
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
-        
+
 
         ## Annual capacity factor for NRCan existing stock
         # (for new stock pulled in all sectors post processing)
@@ -199,17 +205,17 @@ def aggregate_region(region):
         min_note = "95% of MaxACF for slack. " + max_note
 
         act = activity[base_year].loc[nrcan_stock] # annual PJ output
-        c2a = config.end_use_demands.loc['water heating', 'c2a']
+        c2a = runtime.end_use_demands.loc['water heating', 'c2a']
 
         # Annual capacity factor is actual annual activity divided by max possible annual activity from arbitrary c2a
         acf = act / (existing_cap * c2a)
 
         for vint in vints:
-            if vint + config.lifetimes[row['aeo_class']] <= config.model_periods[0]: continue
+            if vint + runtime.lifetimes[row['aeo_class']] <= runtime.cfg.future_periods[0]: continue
 
             sql, params = schema_models.LimitAnnualCapacityFactor(
                 region=region,
-                tech=tech,
+                tech_or_group=tech,
                 vintage=vint,
                 output_comm=water_heating['comm'],
                 operator='ge',
@@ -221,12 +227,12 @@ def aggregate_region(region):
                 dq_struc=2,
                 dq_tech=1,
                 dq_time=3,
-                data_id=utils.data_id(region),
-            ).to_replace_sql()
+                data_id=utils.data_id(runtime, region),
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
             sql, params = schema_models.LimitAnnualCapacityFactor(
                 region=region,
-                tech=tech,
+                tech_or_group=tech,
                 vintage=vint,
                 output_comm=water_heating['comm'],
                 operator='le',
@@ -238,16 +244,16 @@ def aggregate_region(region):
                 dq_struc=2,
                 dq_tech=1,
                 dq_time=3,
-                data_id=utils.data_id(region),
-            ).to_replace_sql()
+                data_id=utils.data_id(runtime, region),
+            ).to_insert_or_ignore_sql()
             curs.execute(sql, params)
-
-
-    conn.commit()
-    conn.close()
 
 
 
 if __name__ == "__main__":
-    
-    aggregate()
+
+    from canoe_residential.runtime import build_runtime
+    import sqlite3 as _sqlite3
+    rt = build_runtime()
+    with _sqlite3.connect(rt.cfg.db_dir) as _conn:
+        aggregate(rt, _conn)

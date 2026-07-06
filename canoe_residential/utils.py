@@ -4,19 +4,19 @@ Written by Ian David Elder for the TEMOA Canada / CANOE model
 """
 
 
+from __future__ import annotations
+
 import os
 import shutil
 from openpyxl import load_workbook
 import sqlite3
 import pandas as pd
-import requests
-import xmltodict
 import pytz
 import datetime
-from canoe_residential.setup import config
-import urllib.request
-import zipfile
-import pickle
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from canoe_residential.common import ResidentialRuntime
 
 
 
@@ -71,154 +71,21 @@ def clean_index(df):
 
 
 
-def compr_db_url(region, table_number):
-
-    return str(config.params['nrcan_url']).replace('<y>', str(config.params['base_year'])).replace('<r>', region.lower()).replace('<t>', str(table_number))
-
-
-
 # Gets a formatted dataset ID
-def data_id(text: str = ''):
-
-    id = f"{config.params['data_id_prefix']}{text}{config.params['data_version']}"
-    config.data_ids.add(id)
+def data_id(runtime: ResidentialRuntime, text: str = '') -> str:
+    id = f"{runtime.cfg.data_id_prefix}{text}{runtime.cfg.version}"
+    runtime.data_ids.add(id)
     return id
 
 
-
-def data_year(period_or_vintage: int) -> int:
-    """Returns the year to take data from for a given period/vintage"""
-    if period_or_vintage < config.model_periods[0]:
+def data_year(period_or_vintage: int, runtime: ResidentialRuntime) -> int:
+    """Returns the year to take data from for a given period/vintage."""
+    if period_or_vintage < runtime.cfg.future_periods[0]:
         # Existing vintages use same-year data
         return period_or_vintage
     else:
         # New vintages take period-end data
-        return period_or_vintage + config.params['period_step']
-
-
-
-def get_statcan_table(table, save_as=None, **kwargs):
-
-    if save_as == None: save_as = f"statcan_{table}.csv"
-    if os.path.splitext(save_as)[1] != ".csv": save_as += ".csv"
-
-    if not config.params['force_download'] and os.path.isfile(config.cache_dir + save_as):
-
-        try:
-
-            df = pd.read_csv(config.cache_dir + save_as, index_col=0)
-            
-            print(f"Got Statcan table {table} from local cache.")
-            return df
-        
-        except Exception as e:
-
-            print(f"Could not get Statcan table {table} from local cache. Trying to download instead.")
-
-    # Make a request from the API for the table, returns response status and url for download
-    url = f"https://www150.statcan.gc.ca/t1/wds/rest/getFullTableDownloadCSV/{table}/en"
-    response = requests.get(url).json()
-
-    # If successful, download the table
-    if response['status'] == 'SUCCESS':
-
-        print(f"Downloading Statcan table {table}...")
-
-        # Download and open the zip file
-        filehandle,_ = urllib.request.urlretrieve(response['object'])
-        zip_file_object = zipfile.ZipFile(filehandle, 'r')
-
-        # Read the table from inside the zip file
-        from_file = zip_file_object.open(f"{table}.csv", "r")
-        df = pd.read_csv(from_file, **kwargs)
-        from_file.close()
-
-        df.to_csv(config.cache_dir + save_as)
-
-        print(f"Cached Statcan table {table}.")
-        return df
-
-    else:
-
-        print(f"Request for {table} from Statcan failed. Status: {response['status']}")
-        return None
-    
-
-
-def get_compr_db(region, table_number, first_row=0, last_row=None) -> pd.DataFrame:
-
-    # Get the requested table and discard excess rows, clean up table
-    nrcan_region = config.regions.loc[region, 'nrcan_id']
-    df = get_data(compr_db_url(nrcan_region, table_number), skiprows=10)
-    df = df.loc[first_row::] if last_row is None else df.loc[first_row:last_row]
-    df = df.drop("Unnamed: 0", axis=1).set_index('Unnamed: 1').dropna()
-    df.index.name = None
-    clean_index(df)
-
-    # Convert year columns to int so we dont have to call like table[str(year)]
-    df.columns = [int(col) for col in df.columns]
-    
-    # Convert all data from strings to floats
-    df = df.astype(float, errors='ignore')
-
-    return df
-
-
-
-# Downloads and handles local caching of data sources
-def get_data(url, file_type=None, cache_file_type=None, name=None, **kwargs) -> pd.DataFrame | None:
-
-    # Get the original file name
-    if name == None: name = url.split("/")[-1].split("\\")[-1]
-    if file_type == None: file_type = url.split(".")[-1]
-
-    file_type = file_type.lower()
-
-    if cache_file_type == None:
-        if file_type == "xml": cache_file_type = "pkl"
-        elif "xl" in file_type: cache_file_type = "csv"
-        else: cache_file_type = file_type
-    
-    # If file type is different from new file type
-    if name.split(".")[-1] != cache_file_type: name = os.path.splitext(name)[0] + "."+cache_file_type
-    cache_file = config.cache_dir + name
-
-    data = None
-    if (not config.params['force_download'] and os.path.isfile(cache_file)):
-        
-        # Get from existing local cache
-        if cache_file_type == "csv": data = pd.read_csv(cache_file, index_col=0, dtype='unicode')
-        elif cache_file_type == "pkl":
-            with open(cache_file, 'rb') as file: data = pickle.load(file)
-
-        print(f"Got {name} from local cache.")
-        
-    else:
-
-        print(f"Downloading {name} ...")
-
-        try:
-            # Download from url
-            if file_type == "csv": data = pd.read_csv(url, **kwargs)
-            elif "xl" in file_type: data = pd.read_excel(url, **kwargs)
-            elif file_type == "xml": data = xmltodict.parse(requests.get(url).content)
-        except Exception as e:
-            print(f"Failed to download {url}")
-            print(e)
-
-        # Try to cache downloaded file
-        try:
-            if not os.path.exists(config.cache_dir): os.mkdir(config.cache_dir)
-
-            if cache_file_type == "csv": data.to_csv(cache_file)
-            elif cache_file_type == "pkl":
-                with open(cache_file, 'wb') as file: pickle.dump(data, file)
-            print(f"Cached {name}.")
-        except Exception as e:
-            print(f"Failed to cache {cache_file}.")
-            print(e)
-
-    return data
+        return period_or_vintage + runtime.cfg.period_step
 
 
 
@@ -241,7 +108,7 @@ def dq_time(from_year, to_year):
 
 
 # Converts the timezone of a dataframe then shifts rows around so that row 0 is hour 0 again
-def realign_timezone(df: pd.DataFrame, from_timezone:str=None, to_timezone:str=None, from_utc_offset:int=None, to_utc_offset:int=None, time_col=None):
+def realign_timezone(df: pd.DataFrame, from_timezone:str=None, to_timezone:str=None, from_utc_offset:int=None, to_utc_offset:int=None, time_col=None, default_timezone:str='EST'):
 
     df_shifted = df.copy()
 
@@ -266,7 +133,7 @@ def realign_timezone(df: pd.DataFrame, from_timezone:str=None, to_timezone:str=N
     # Convert to base timezone
     if to_timezone is not None: new_tz = to_timezone
     elif to_utc_offset is not None: new_tz = tz = pytz.FixedOffset(to_utc_offset*60)
-    else: new_tz = config.params['timezone']
+    else: new_tz = default_timezone
     new_time = time.tz_convert(new_tz)
 
     # Find where the zeroeth hour ended up
@@ -289,8 +156,8 @@ def realign_timezone(df: pd.DataFrame, from_timezone:str=None, to_timezone:str=N
 
 def stock_vintages(
         lifetime,
-        vint_interval=config.params['period_step'],
-        stock_year=config.model_periods[0],
+        vint_interval: int,
+        stock_year: int,
     ) -> tuple[list, list]:
 
     vint_last = stock_year - stock_year % vint_interval # first stepped back vint
@@ -304,8 +171,8 @@ def stock_vintages(
 
     # Has to be an existing vintage but we often use e.g. 2024 to represent end of 2025
     # because Temoa traps us into start-of-period indexing
-    if vints[-1] >= config.model_periods[0]:
-        vints[-1] = config.model_periods[0] - 1
+    if vints[-1] >= stock_year:
+        vints[-1] = stock_year - 1
     
     # Only one vintage so all weight in there
     if len(vints) == 1: weights = [1]
@@ -338,7 +205,7 @@ class database_converter:
 
         return cls._instance
 
-    def clone_sqlite_to_excel(self, from_sqlite_file: str = config.database_file, to_excel_file: str = config.excel_target_file, excel_template_file: str = config.excel_template_file):
+    def clone_sqlite_to_excel(self, from_sqlite_file: str | None = None, to_excel_file: str | None = None, excel_template_file: str | None = None):
         
         print(f"\nCloning {os.path.basename(from_sqlite_file)} into target {os.path.basename(to_excel_file)}."\
               "\nThis may take a minute...")

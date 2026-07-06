@@ -1,82 +1,91 @@
 """
-Applies currency conversions to all cost tables
-Written by Ian David Elder for the CANOE model
+Currency conversion utilities for canoe-residential.
+
+conv_curr() converts a cost from its original currency/year to the
+final base currency/year configured in params.yaml.
 """
+from __future__ import annotations
 
 import sqlite3
+from typing import TYPE_CHECKING
+
 import pandas as pd
-from canoe_residential.setup import config
 
-
-# Exchange rate and inflation tables
-exchange = pd.read_csv(config.input_files + 'currency_exchange.csv', index_col=0)
-inflation = pd.read_csv(config.input_files + 'cad_inflation.csv', index_col=0)
-
-# Currency and currency year for final data, converting to this
-base_curr = config.params['final_currency']
-base_year = config.params['final_currency_year']
-
-# Multiplier for final currency (to normalise if not using CAD2020)
-base_fact = exchange.loc[base_year, base_curr] * inflation.loc[base_year, config.params['inflation_index']]
+if TYPE_CHECKING:
+    from canoe_residential.common import ResidentialRuntime
 
 
 def conv_curr(
-        orig_cost,
-        orig_year: int = config.params['aeo_currency_year'],
-        orig_curr: str = config.params['aeo_currency'],
-    ):
+    runtime: ResidentialRuntime,
+    orig_cost: float,
+    orig_year: int | None = None,
+    orig_curr: str | None = None,
+) -> float:
     """
-    Converts a cost from its original currency and year to the base currency and year
+    Convert a cost from its original currency/year to the base currency/year.
 
-    params:
-    - orig_cost: the original cost as given in the data source
-    - orig_year: the original currency year in the data source. By default, aeo_currency_year from params.yaml
-    - orig_curr: the orignal currency in the data source (USD, EUR, GDP, AUD). By default, aeo_currency from params.yaml
+    Args:
+        runtime:   populated ResidentialRuntime (for config + exchange tables).
+        orig_cost: the original cost value from the data source.
+        orig_year: the data source's currency year; defaults to cfg.aeo_currency_year.
+        orig_curr: the data source's currency code (USD, CAD, etc.);
+                   defaults to cfg.aeo_currency.
 
-    For example, if the original cost from data is $2500 USD (2010),
-    cost = conv_curr(2500, 2010, 'USD')
+    Example:
+        cost_cad2020 = conv_curr(runtime, 2500, 2010, 'USD')
     """
-    
-    return orig_cost * exchange.loc[orig_year, orig_curr] * inflation.loc[orig_year, config.params['inflation_index']] / base_fact
+    if orig_year is None:
+        orig_year = runtime.cfg.aeo_currency_year
+    if orig_curr is None:
+        orig_curr = runtime.cfg.aeo_currency
+
+    cfg = runtime.cfg
+    exchange = runtime.currency_exchange
+    inflation = runtime.currency_inflation
+
+    base_fact = (
+        exchange.loc[cfg.final_currency_year, cfg.final_currency]
+        * inflation.loc[cfg.final_currency_year, cfg.inflation_index]
+    )
+    return (
+        orig_cost
+        * exchange.loc[orig_year, orig_curr]
+        * inflation.loc[orig_year, cfg.inflation_index]
+        / base_fact
+    )
 
 
-def convert_currencies():
-
-    # Names of tables and relevant data columns
-    cost_tables = {'CostInvest': 'cost_invest', 'CostFixed': 'cost_fixed', 'CostVariable': 'cost_variable'}
-
-    conn = sqlite3.connect(config.database_file)
+def convert_currencies(runtime: ResidentialRuntime, conn: sqlite3.Connection) -> None:
+    """Apply currency conversion to all cost table rows in the database."""
+    cost_tables = {
+        "CostInvest": "cost_invest",
+        "CostFixed": "cost_fixed",
+        "CostVariable": "cost_variable",
+    }
     curs = conn.cursor()
+    cfg = runtime.cfg
 
-    # For each cost table...
+    base_curr = cfg.final_currency
+    base_year = cfg.final_currency_year
+
     for table, header in cost_tables.items():
-
-        # Get all data
         df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
-
-        # Convert data cost to final currency cost
         df[header] = [
-            conv_curr(cost, year, curr)
-            for cost, year, curr in df[[f"data_{header}",'data_cost_year','data_curr']].values
+            conv_curr(runtime, cost, year, curr)
+            for cost, year, curr in df[[f"data_{header}", "data_cost_year", "data_curr"]].values
         ]
-
-        # Add units of final currency
         df[f"{header}_units"] += f" {base_year} {base_curr}"
-
-        # Clear the table
         curs.execute(f"DELETE FROM {table}")
-
-        # Refill it with converted currency
-        df.to_sql(table, conn, if_exists='append', index=False)
-
+        df.to_sql(table, conn, if_exists="append", index=False)
 
     conn.commit()
-    conn.close()
-
     print(f"Currencies converted to {base_year} {base_curr}.\n")
 
 
-
 if __name__ == "__main__":
+    from canoe_residential.runtime import build_runtime
+    import sqlite3 as _sqlite3
 
-    convert_currencies()
+    rt = build_runtime()
+    with _sqlite3.connect(rt.cfg.db_dir) as _conn:
+        convert_currencies(rt, _conn)

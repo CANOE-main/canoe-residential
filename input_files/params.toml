@@ -1,0 +1,188 @@
+# Configuration for canoe-residential sector aggregation
+
+# ---------------------------------------------------------------------------
+# Time periods
+# ---------------------------------------------------------------------------
+
+period_step = 5  # number of years between model periods
+
+future_periods = [2025, 2030, 2035, 2040, 2045]
+
+base_year    = 2022   # default year to pull source data from
+weather_year = 2018   # for normalised timeseries data only
+timezone     = "EST"
+
+# ---------------------------------------------------------------------------
+# Provenance
+# ---------------------------------------------------------------------------
+
+data_id_prefix = "RESHR"
+version        = "002"
+
+# ---------------------------------------------------------------------------
+# Database / file paths
+# ---------------------------------------------------------------------------
+
+db_dir         = "canoe.sqlite"
+excel_template = "input_files/Template spreadsheet (make a copy).xlsx"
+excel_output   = "residential.xlsx"
+
+# ---------------------------------------------------------------------------
+# Model settings
+# ---------------------------------------------------------------------------
+
+existing_cap_tolerance = 0.1   # existing capacities below this are removed
+
+# Set DSD to zero if less than this × hourly average (for computational reasons)
+dsd_tolerance = 0.02
+
+# ---------------------------------------------------------------------------
+# Currency
+# ---------------------------------------------------------------------------
+
+final_currency      = "CAD"           # not configured to output non-CAD yet
+final_currency_year = 2020
+inflation_index     = "gdp_deflator"  # gdp_deflator | general_cpi | energy_and_petroleum | industrial | construction_non_residential
+
+# ---------------------------------------------------------------------------
+# Aggregation switches
+# ---------------------------------------------------------------------------
+
+force_generate_weather_maps = false  # force regeneration of weather maps instead of local cache
+force_download               = false  # force re-download instead of cache
+show_plots                   = true
+include_dsd                  = true   # aggregating DSDs is slow
+include_imports              = false  # aggregate dummy import technologies for fuels
+include_emissions            = false
+include_furnace_fans         = false  # electricity consumption of fans in space heating
+simplify_model               = false  # reduces to simple model (wipes DSDs)
+clone_to_xlsx                = false
+
+# ---------------------------------------------------------------------------
+# NRCan
+# ---------------------------------------------------------------------------
+
+nrcan_url       = "https://oee.nrcan.gc.ca/corporate/statistics/neud/dpa/data_e/downloads/comprehensive/Excel/<y>/res_<r>_e_<t>.xls"
+nrcan_reference = "Natural Resources Canada, (2025). Comprehensive Energy Use Database. https://oee.nrcan.gc.ca/corporate/statistics/neud/dpa/menus/trends/comprehensive_tables/list.cfm"
+handbook_reference = "Natural Resources Canada, (2025). Energy Use Data Handbook Tables. https://oee.nrcan.gc.ca/corporate/statistics/neud/dpa/menus/trends/handbook/tables.cfm"
+
+# ---------------------------------------------------------------------------
+# AEO
+# ---------------------------------------------------------------------------
+
+aeo_reference         = "EIA. (2025, April 15). Download the National Energy Modeling System (NEMS). rsmess [dataset]. https://www.eia.gov/outlooks/aeo/info_nems_archive.php"
+aeo_updated_reference = "EIA. (2023). Updated Buildings Sector Appliance and Equipment Costs and Efficiency-Reference case [dataset]. https://www.eia.gov/analysis/studies/buildings/equipcosts/"
+aeo_data_year         = 2025
+aeo_currency_year     = 2022
+aeo_currency          = "USD"
+
+# ---------------------------------------------------------------------------
+# StatCan
+# ---------------------------------------------------------------------------
+
+statcan_reference = "Statistics Canada, (2025, January 21). Projected population, by projection scenario, age and sex, as of July 1. https://www150.statcan.gc.ca/t1/tbl1/en/cv.action?pid=1710005701"
+statcan_data_year = 2025
+
+# ---------------------------------------------------------------------------
+# EPA emissions
+# ---------------------------------------------------------------------------
+
+epa_reference          = "US EPA. (2023, March). GHG Emission Factors Hub [Overviews and Factsheets]. https://www.epa.gov/climateleadership/ghg-emission-factors-hub"
+epa_year               = 2025  # check if GWP factors have changed and update conversion_factors below
+epa_url                = "https://www.epa.gov/system/files/other-files/2025-01/ghg-emission-factors-hub-2025.xlsx"
+emission_commodity     = "CO2eq"
+emission_activity_units = "ktCO2eq/PJ"
+
+# ---------------------------------------------------------------------------
+# Conversion factors
+# ---------------------------------------------------------------------------
+
+[conversion_factors.epa_units]
+CO2 = 0.948    # kg/MMBtu → kt/PJ
+CH4 = 0.000948 # g/MMBtu  → kt/PJ
+N2O = 0.000948 # g/MMBtu  → kt/PJ
+
+[conversion_factors.gwp]
+CO2 = 1   # CO2eq 100-year GWP
+CH4 = 28  # CO2eq 100-year GWP
+N2O = 265 # CO2eq 100-year GWP
+
+[conversion_factors.efficiency]
+EER = 0.293 # kBtu/kWh → PJ/PJ
+
+[conversion_factors.lighting]
+efficacy = 0.0317   # lm/W    → Glmy/PJ
+lifetime = 1.142e-4 # hours   → years (1/8760)
+cost     = 1.0      # $/klmy  → M$/Glmy
+
+[conversion_factors.activity]
+kwh = 3.6e-9 # kWh → PJ
+
+[conversion_factors.cost]
+# invest = 0.001 # $/unit   → M$/kunit
+# fixed  = 0.001 # $/unit.y → M$/kunit.y
+kunit = 0.001 # $/unit to M$/kunit
+Munit = 1 # $/unit.y to M$/kunit.y
+
+# ---------------------------------------------------------------------------
+# Furnace fans
+# ---------------------------------------------------------------------------
+
+[furnace_fans]
+output_split = 0.0205 # PJ elc in / PJ heat out, from 6 kWh/MMBtu
+efficiency   = 0.01   # arbitrarily small but non-zero
+data_year    = 2013
+reference    = "nyserda. (2013, April 15). Gas Furnace Electricity Usage. https://www.taitem.com/wp-content/uploads/tt_furnace_electricity_use_20130507.pdf"
+
+# ---------------------------------------------------------------------------
+# Appliances
+# ---------------------------------------------------------------------------
+
+[appliances]
+annual_capacity_factor = 0.15 # Arbitrary capacity factor for appliances so that existing capacity can satisfy peak demand
+
+# ---------------------------------------------------------------------------
+# Lighting
+# ---------------------------------------------------------------------------
+
+[lighting]
+annual_capacity_factor = 0.0667 # 1.6/24
+acf_reference  = "DOE. (2012). Residential Lighting End-Use Consumption Study: Estimation Framework and Initial Estimates. https://www1.eere.energy.gov/buildings/publications/pdfs/ssl/2012_residential-lighting-study.pdf"
+acf_data_year  = 2012
+acf_note       = "1.6 hours per day national average usage from US."
+on_stock_ref   = "IESO. (2018). 2018 Ontario Residential End-Use Survey. IESO. https://ieso.ca/-/media/Files/IESO/Document-Library/research/Ontario-Residential-End-Use-Survey.ashx"
+usage_ref      = "Statistics Canada. (2018, June 27). Use of energy-saving lights, Canada and provinces. https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3810004801"
+input_comm     = "electricity"
+
+# ---------------------------------------------------------------------------
+# Housing categories (NRCan stock aggregation)
+# ---------------------------------------------------------------------------
+
+[housing_categories]
+single_family = "single detached+single attached+mobile homes"
+multi_family  = "apartments"
+
+# ---------------------------------------------------------------------------
+# ResStock (NREL, for DSDs)
+# ---------------------------------------------------------------------------
+
+[resstock]
+url       = "https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2024/resstock_amy2018_release_2/timeseries_aggregates/by_state/upgrade=16/state=<s>/<f>"
+reference = "NREL. (2024). ResStock-NREL (amy2018, v2, upgrade 16). https://data.openei.org/s3_viewer?bucket=oedi-data-lake&prefix=nrel-pds-building-stock%2Fend-use-load-profiles-for-us-building-stock%2F2024%2Fresstock_amy2018_release_2%2Ftimeseries_aggregates%2Fby_state%2Fupgrade%3D16%2F"
+
+[resstock.housing_files]
+"mobile homes"    = "up16-<s>-mobile_home.csv"
+apartments        = "up16-<s>-multi-family_with_5plus_units.csv"
+"single attached" = "up16-<s>-single-family_attached.csv"
+"single detached" = "up16-<s>-single-family_detached.csv"
+
+# ---------------------------------------------------------------------------
+# Weather (Renewables Ninja, for DSD weather mapping)
+# ---------------------------------------------------------------------------
+
+[weather]
+us_temperature_url = "https://www.renewables.ninja/country_downloads/US/ninja-weather-country-US-temperature_pop_wtd-merra2.csv"
+us_humidity_url    = "https://www.renewables.ninja/country_downloads/US/ninja-weather-country-US-humidity_pop_wtd-merra2.csv"
+ca_temperature_url = "https://www.renewables.ninja/country_downloads/CA/ninja-weather-country-CA-temperature_pop_wtd-merra2.csv"
+ca_humidity_url    = "https://www.renewables.ninja/country_downloads/CA/ninja-weather-country-CA-humidity_pop_wtd-merra2.csv"
+reference          = "Staffell et al. (2023) https://doi.org/10.1038/s41560-023-01341-5 https://www.renewables.ninja/"
