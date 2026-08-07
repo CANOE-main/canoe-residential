@@ -13,12 +13,13 @@ Usage:
 """
 from __future__ import annotations
 
+from pathlib import Path
 import tomllib
 from dataclasses import dataclass, field
 from typing import Literal
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +172,7 @@ class CANOEResidentialConfig(BaseModel):
     # --- Shared base fields (mirror CANOEAgricultureConfig; candidates for
     #     a future canoe-common package) ---
     schema_version: str = "4.0"
-    db_dir: str                              # path to SQLite database file
+    db_dir: Path                              # path to SQLite database file
     existing_periods: list[int] = []         # populated from DB; not in YAML
     future_periods: list[int]                # = sorted(model_periods) from YAML
     # TODO replace with CANOEProvince class
@@ -266,6 +267,11 @@ class CANOEResidentialConfig(BaseModel):
         raw.setdefault("province_list", [])
         raw.setdefault("existing_periods", [])
         return cls.model_validate(raw)
+
+    @field_validator("db_dir")
+    @classmethod
+    def expand_path(cls, v: Path) -> Path:
+        return v.expanduser()
 
 
 # ---------------------------------------------------------------------------
