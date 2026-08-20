@@ -3,6 +3,7 @@ Aggregates residential non-subsector-specific data
 Written by Ian David Elder for the CANOE model
 """
 
+from canoe_residential.electricity_patch import add_electricity_bridge
 import canoe_residential.utils as utils
 import canoe_residential.nrcan as nrcan
 import pandas as pd
@@ -83,6 +84,12 @@ def pre_process(runtime: ResidentialRuntime, conn: sqlite3.Connection):
     # canoe-residential validates them in Step 0 (residential_sector.build_database)
     # and never writes to them.
 
+    """
+    ELECTRICITY PATCH
+    """
+    add_electricity_bridge(
+        runtime, curs
+    )
 
     """
     ##############################################################
@@ -399,7 +406,7 @@ def pre_aggregate_region(region: str, runtime: ResidentialRuntime, conn: sqlite3
             data_id=utils.data_id(runtime, region),
         ).to_insert_or_ignore_sql()
         curs.execute(sql, params)
-        
+
 
         ## CostFixed
         eud = runtime.end_use_demands.loc[row['end_use']]
