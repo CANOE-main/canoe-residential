@@ -167,14 +167,14 @@ multi_family  = "apartments"
 # ---------------------------------------------------------------------------
 
 [resstock]
-url       = "https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2024/resstock_amy2018_release_2/timeseries_aggregates/by_state/upgrade=16/state=<s>/<f>"
-reference = "NREL. (2024). ResStock-NREL (amy2018, v2, upgrade 16). https://data.openei.org/s3_viewer?bucket=oedi-data-lake&prefix=nrel-pds-building-stock%2Fend-use-load-profiles-for-us-building-stock%2F2024%2Fresstock_amy2018_release_2%2Ftimeseries_aggregates%2Fby_state%2Fupgrade%3D16%2F"
+url       = "https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2024/resstock_amy2018_release_2/timeseries_aggregates/by_state/upgrade=0/state=<s>/<f>"
+reference = "NREL. (2024). ResStock-NREL (amy2018, v2, upgrade 0). https://data.openei.org/s3_viewer?bucket=oedi-data-lake&prefix=nrel-pds-building-stock/end-use-load-profiles-for-us-building-stock/2024/resstock_amy2018_release_2/timeseries_aggregates/by_state/upgrade=0/"
 
 [resstock.housing_files]
-"mobile homes"    = "up16-<s>-mobile_home.csv"
-apartments        = "up16-<s>-multi-family_with_5plus_units.csv"
-"single attached" = "up16-<s>-single-family_attached.csv"
-"single detached" = "up16-<s>-single-family_detached.csv"
+"mobile homes"    = "up00-<s>-mobile_home.csv"
+apartments        = "up00-<s>-multi-family_with_5plus_units.csv"
+"single attached" = "up00-<s>-single-family_attached.csv"
+"single detached" = "up00-<s>-single-family_detached.csv"
 
 # ---------------------------------------------------------------------------
 # Weather (Renewables Ninja, for DSD weather mapping)
